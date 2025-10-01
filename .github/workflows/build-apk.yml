@@ -10,15 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Install dependencies
+      - name: Setup Python and virtualenv
         run: |
           sudo apt update
-          sudo apt install -y python3-pip python3-setuptools git unzip openjdk-11-jdk wget
-          pip3 install --upgrade cython virtualenv
-          pip3 install buildozer==1.5.0
+          sudo apt install -y python3-pip python3-venv git unzip openjdk-11-jdk wget
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install cython==0.29.34 buildozer==1.5.0
 
       - name: Install Android SDK & NDK
         run: |
@@ -35,8 +37,9 @@ jobs:
           ANDROIDNDK: $HOME/.buildozer/android/platform/android-ndk-r25b
           PATH: $HOME/android-sdk/cmdline-tools/latest/bin:$PATH
         run: |
-          buildozer -v android debug
-          
+          source venv/bin/activate
+          python -m buildozer -v android debug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
