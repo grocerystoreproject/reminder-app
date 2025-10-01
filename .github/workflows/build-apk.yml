@@ -1,15 +1,14 @@
 name: Build Android APK
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -19,18 +18,10 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3-pip build-essential git zip unzip openjdk-17-jdk
+          sudo apt install -y python3-pip python3-setuptools git zip unzip openjdk-17-jdk
           pip install --upgrade pip
-          pip install buildozer cython
+          pip install buildozer cython==0.29.36
 
       - name: Build APK
         run: |
-          cd $GITHUB_WORKSPACE
-          buildozer init || true
           buildozer android debug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v3
-        with:
-          name: reminderapp-apk
-          path: bin/*.apk
