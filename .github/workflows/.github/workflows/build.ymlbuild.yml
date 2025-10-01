@@ -1,36 +1,18 @@
-name: Build APK
+- name: Set up Python
+  uses: actions/setup-python@v4
+  with:
+    python-version: 3.10  # Use Python 3.10 for Buildozer compatibility
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+- name: Install system dependencies
+  run: |
+    sudo apt-get update
+    sudo apt-get install -y python3.10-venv python3.10-distutils \
+        build-essential git wget unzip openjdk-11-jdk \
+        python3-pip python3-setuptools python3-wheel
 
-jobs:
-  build:
-    runs-on: ubuntu-20.04
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y git zip unzip openjdk-17-jdk
-          pip install --upgrade pip
-          pip install cython buildozer
-
-      - name: Build with Buildozer
-        run: |
-          buildozer android debug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v3
-        with:
-          name: reminder-app-apk
-          path: bin/*.apk
+- name: Create virtualenv
+  run: |
+    python3.10 -m venv venv
+    source venv/bin/activate
+    pip install --upgrade pip setuptools wheel
+    pip install cython==0.29.34 buildozer==1.4.0
