@@ -10,10 +10,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
@@ -36,7 +36,7 @@ jobs:
 
       - name: Accept Licenses and Install Packages
         run: |
-          sdkmanager --sdk_root=$HOME/android-sdk --licenses || true
+          yes | sdkmanager --sdk_root=$HOME/android-sdk --licenses
           sdkmanager --sdk_root=$HOME/android-sdk --update
           sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
@@ -45,7 +45,7 @@ jobs:
           buildozer android debug
 
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: reminder-app-apk
           path: bin/*.apk
