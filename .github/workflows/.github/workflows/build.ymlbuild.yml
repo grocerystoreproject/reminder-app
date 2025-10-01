@@ -1,47 +1,48 @@
-name: Build Android APK
+name: Build ReminderApp APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-      ANDROID_NDK_HOME: ${{ github.workspace }}/android-ndk
-      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      ANDROIDSDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROIDNDK_ROOT: ${{ github.workspace }}/android-ndk
+      PATH: ${{ github.workspace }}/android-sdk/cmdline-tools/latest/bin:${{ github.workspace }}/android-ndk:$PATH
 
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Setup Python
+      - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: 3.10
 
-      - name: Install dependencies
+      - name: Upgrade pip and install dependencies
         run: |
-          python -m pip install --upgrade pip wheel setuptools virtualenv
+          python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
           python -m pip install cython==0.29.34
-          python -m pip install kivy==2.2.1 buildozer==1.5.0 python-for-android==2025.9.3
+          python -m pip install "kivy==2.2.1"
+          python -m pip install "buildozer==1.4.0" python-for-android distutils
 
-      - name: Setup Android SDK & NDK
+      - name: Install Android SDK & NDK
         run: |
-          mkdir -p $ANDROID_SDK_ROOT
-          mkdir -p $ANDROID_NDK_HOME
-          sudo apt-get update
-          sudo apt-get install -y openjdk-17-jdk wget unzip zip
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d $ANDROID_SDK_ROOT
-          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          mv $ANDROID_SDK_ROOT/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.2.9519653"
+          mkdir -p $ANDROIDSDK_ROOT/cmdline-tools
+          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip sdk-tools.zip -d $ANDROIDSDK_ROOT/cmdline-tools
+          mv $ANDROIDSDK_ROOT/cmdline-tools/cmdline-tools $ANDROIDSDK_ROOT/cmdline-tools/latest
+          yes | $ANDROIDSDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+          yes | $ANDROIDSDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+          # Install NDK for python-for-android
+          curl -o ndk.zip https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
+          unzip ndk.zip -d $ANDROIDNDK_ROOT
 
-      - name: Build APK
+      - name: Run Buildozer
         run: |
           python -m buildozer android debug
-        working-directory: ${{ github.workspace }}
