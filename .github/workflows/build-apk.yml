@@ -1,47 +1,52 @@
-name: Build Android APK
+name: Build Reminder App
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches:
+      - main
+  pull_request:
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
+    env:
+      ANDROIDSDK: ${{ github.workspace }}/android-sdk
+      ANDROIDNDK: ${{ github.workspace }}/android-ndk
+      ANDROIDAPI: 33
+      ANDROIDMINAPI: 21
+      BUILDOZER_ALLOW_ROOT: 1
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Setup Python and virtualenv
-        run: |
-          sudo apt update
-          sudo apt install -y python3-pip python3-venv git unzip openjdk-11-jdk wget
-          python3 -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install cython==0.29.34 buildozer==1.5.0
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.10
 
-      - name: Install Android SDK & NDK
-        run: |
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk --licenses
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-distutils openjdk-17-jdk unzip wget zip
 
-      - name: Build APK
-        env:
-          ANDROIDSDK: $HOME/android-sdk
-          ANDROIDNDK: $HOME/.buildozer/android/platform/android-ndk-r25b
-          PATH: $HOME/android-sdk/cmdline-tools/latest/bin:$PATH
-        run: |
-          source venv/bin/activate
-          python -m buildozer -v android debug
+    - name: Upgrade pip & install Buildozer/Kivy
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install cython==0.29.34
+        python -m pip install "kivy==2.2.1"
+        python -m pip install "buildozer==1.4.0" python-for-android
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReminderApp-APK
-          path: bin/*.apk
+    - name: Setup Android SDK & NDK
+      run: |
+        mkdir -p $ANDROIDSDK $ANDROIDNDK
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+        unzip cmdline-tools.zip -d $ANDROIDSDK
+        mkdir -p $ANDROIDSDK/cmdline-tools
+        mv $ANDROIDSDK/cmdline-tools/* $ANDROIDSDK/cmdline-tools/latest
+        yes | $ANDROIDSDK/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROIDSDK --licenses
+        $ANDROIDSDK/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROIDSDK "platforms;android-33" "platform-tools" "build-tools;33.0.2"
+
+    - name: Build APK
+      run: |
+        buildozer android debug
