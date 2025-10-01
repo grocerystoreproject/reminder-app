@@ -2,7 +2,8 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -10,61 +11,34 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3-pip python3-setuptools git zip unzip openjdk-17-jdk wget
-          pip install --upgrade pip
-          pip install buildozer cython==0.29.36
+          sudo apt install -y python3-pip python3-setuptools git unzip openjdk-11-jdk wget
+          pip3 install --upgrade cython virtualenv
+          pip3 install buildozer==1.5.0
 
-      # Cache Android SDK
-      - name: Cache Android SDK
-        uses: actions/cache@v4
-        with:
-          path: $HOME/android-sdk
-          key: android-sdk
-
-      # Cache Buildozer platform/NDK/Gradle
-      - name: Cache Buildozer
-        uses: actions/cache@v4
-        with:
-          path: |
-            $HOME/.buildozer/android/platform
-            $HOME/.buildozer/android/packages
-          key: buildozer-cache
-
-      - name: Install Android SDK (if not cached)
+      - name: Install Android SDK & NDK
         run: |
-          if [ ! -d "$HOME/android-sdk/cmdline-tools/latest" ]; then
-            mkdir -p $HOME/android-sdk/cmdline-tools
-            cd $HOME/android-sdk/cmdline-tools
-            wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-            unzip -q commandlinetools-linux-9477386_latest.zip -d .
-            mv cmdline-tools latest
-          fi
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
-
-      - name: Accept Licenses and Install Packages
-        run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
+          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
           yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk --licenses
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk --update
           $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
       - name: Build APK
+        env:
+          ANDROIDSDK: $HOME/android-sdk
+          ANDROIDNDK: $HOME/.buildozer/android/platform/android-ndk-r25b
+          PATH: $HOME/android-sdk/cmdline-tools/latest/bin:$PATH
         run: |
-          buildozer android debug
-
+          buildozer -v android debug
+          
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: reminder-app-apk
+          name: ReminderApp-APK
           path: bin/*.apk
