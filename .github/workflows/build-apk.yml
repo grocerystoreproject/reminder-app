@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout repository
@@ -31,16 +31,14 @@ jobs:
           build-essential \
           git \
           zip \
-          libncurses6 \
-          libncursesw6 \
-          libtinfo6 \
           zlib1g-dev \
           libssl-dev \
           libffi-dev \
           autoconf \
           automake \
           libtool \
-          pkg-config
+          pkg-config \
+          ccache
 
     - name: Create and activate virtual environment
       run: |
@@ -53,10 +51,12 @@ jobs:
         source venv/bin/activate
         pip install --upgrade cython==0.29.36
         pip install --upgrade buildozer==1.5.0
+        pip install --upgrade python-for-android==2024.1.21
 
     - name: Setup Android environment
       run: |
         mkdir -p ~/.buildozer/android/platform
+        echo "export SETUPTOOLS_USE_DISTUTILS=stdlib" >> $GITHUB_ENV
         
     - name: Cache Buildozer global directory
       uses: actions/cache@v4
@@ -73,7 +73,9 @@ jobs:
     - name: Build APK with Buildozer
       run: |
         source venv/bin/activate
-        yes | buildozer android debug
+        export USE_CCACHE=1
+        export PYTHONUNBUFFERED=1
+        yes | buildozer -v android debug
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
