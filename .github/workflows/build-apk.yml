@@ -1,56 +1,53 @@
-name: Build APK
+name: Build Android APK
 
 on:
   push:
     branches:
       - main
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    env:
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_NDK_ROOT: ${{ github.workspace }}/android-ndk
 
-      - name: Set up Python
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"  # Use 3.11 instead of 3.12
+          python-version: 3.10
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            openjdk-17-jdk unzip zip \
-            python3-venv python3-pip python3-dev \
-            build-essential libffi-dev git \
-            libssl-dev libsqlite3-dev zlib1g-dev \
-            libncurses5-dev libncursesw5-dev \
-            libreadline-dev libbz2-dev liblzma-dev \
-            libtinfo6 curl wget
+          sudo apt-get install -y python3-pip python3-venv git wget unzip openjdk-11-jdk libncurses5 libstdc++6 libffi-dev
+          sudo apt-get install -y libtinfo5
 
-      - name: Install Android SDK Command-line tools
+      - name: Set up virtual environment
         run: |
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          cd $HOME/android-sdk/cmdline-tools
-          curl -o sdk-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip sdk-tools.zip -d $HOME/android-sdk/cmdline-tools
-          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
-          export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
-          yes | sdkmanager --licenses
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-
-      - name: Install Buildozer and distutils
-        run: |
-          python -m venv venv
+          python3 -m venv venv
           source venv/bin/activate
-          pip install --upgrade pip
-          pip install setuptools==67.7.2 buildozer cython  # setuptools provides distutils
+          python -m pip install --upgrade pip
+          pip install --upgrade cython==0.29.34 buildozer==1.5.0
+
+      - name: Install Android SDK/NDK
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT
+          mkdir -p $ANDROID_NDK_ROOT
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip cmdline-tools.zip -d $ANDROID_SDK_ROOT
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
       - name: Build APK
         run: |
           source venv/bin/activate
-          buildozer -v android debug
+          buildozer android debug
