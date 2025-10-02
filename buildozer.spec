@@ -31,12 +31,16 @@ jobs:
           build-essential \
           git \
           zip \
-          libncurses5 \
-          libncursesw5 \
-          libtinfo5 \
+          libncurses6 \
+          libncursesw6 \
+          libtinfo6 \
           zlib1g-dev \
           libssl-dev \
-          libffi-dev
+          libffi-dev \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config
 
     - name: Create and activate virtual environment
       run: |
