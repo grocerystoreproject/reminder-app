@@ -1,76 +1,85 @@
-[app]
+name: Build APK
 
-# (str) Title of your application
-title = ReminderApp
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
-# (str) Package name
-package.name = reminderapp
+jobs:
+  build:
+    runs-on: ubuntu-22.04
 
-# (str) Package domain (needed for android/ios packaging)
-package.domain = org.example
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-# (str) Source code where the main.py live
-source.dir = .
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
 
-# (list) Source files to include (let empty to include all the files)
-source.include_exts = py,png,jpg,kv,atlas,mp3,wav,ogg
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-pip \
+          python3-venv \
+          openjdk-17-jdk \
+          wget \
+          unzip \
+          build-essential \
+          git \
+          zip \
+          zlib1g-dev \
+          libssl-dev \
+          libffi-dev \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          ccache
 
-# (str) Application versioning (method 1)
-version = 0.1
+    - name: Create and activate virtual environment
+      run: |
+        python3 -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip setuptools wheel
 
-# (list) Application requirements
-# comma separated e.g. requirements = sqlite3,kivy
-requirements = python3==3.10.14,kivy==2.2.1,android,pyjnius
+    - name: Install Buildozer and dependencies
+      run: |
+        source venv/bin/activate
+        pip install --upgrade cython==0.29.36
+        pip install --upgrade buildozer==1.5.0
+        pip install --upgrade python-for-android==2024.1.21
 
-# (str) Supported orientation (landscape, sensorLandscape, portrait or all)
-orientation = portrait
+    - name: Setup Android environment
+      run: |
+        mkdir -p ~/.buildozer/android/platform
+        echo "export SETUPTOOLS_USE_DISTUTILS=stdlib" >> $GITHUB_ENV
+        
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: buildozer-${{ hashFiles('buildozer.spec') }}
 
-# (bool) Indicate if the application should be fullscreen or not
-fullscreen = 0
+    - name: Cache Buildozer build directory
+      uses: actions/cache@v4
+      with:
+        path: .buildozer
+        key: buildozer-build-${{ hashFiles('**/*.py', 'buildozer.spec') }}
 
-# (list) Permissions
-android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,USE_EXACT_ALARM,POST_NOTIFICATIONS,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
+    - name: Build APK with Buildozer
+      run: |
+        source venv/bin/activate
+        export USE_CCACHE=1
+        export PYTHONUNBUFFERED=1
+        yes | buildozer -v android debug
 
-# (int) Target Android API, should be as high as possible.
-android.api = 33
-
-# (int) Minimum API your APK will support.
-android.minapi = 21
-
-# (int) Android SDK version to use
-android.sdk = 33
-
-# (str) Android NDK version to use
-android.ndk = 25b
-
-# (str) Android NDK path (leave empty for auto download)
-android.ndk_path =
-
-# (str) Android SDK path (leave empty for auto download)  
-android.sdk_path =
-
-# (bool) If True, then skip trying to update the Android sdk
-android.skip_update = False
-
-# (bool) If True, then automatically accept SDK license
-android.accept_sdk_license = True
-
-# (str) Android entry point, default is ok for Kivy-based app
-android.entrypoint = org.kivy.android.PythonActivity
-
-# (str) Android app theme, default is ok for Kivy-based app
-android.apptheme = "@android:style/Theme.NoTitleBar"
-
-# (list) The Android archs to build for
-android.archs = arm64-v8a,armeabi-v7a
-
-# (bool) enables Android auto backup feature (Android API >=23)
-android.allow_backup = True
-
-[buildozer]
-
-# (int) Log level (0 = error only, 1 = info, 2 = debug (with command output))
-log_level = 2
-
-# (int) Display warning if buildozer is run as root (0 = False, 1 = True)
-warn_on_root = 1
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: reminderapp-debug
+        path: bin/*.apk
+        if-no-files-found: error
