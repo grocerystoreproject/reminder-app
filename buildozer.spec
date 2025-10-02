@@ -20,7 +20,7 @@ version = 0.1
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy==2.2.1,android,pyjnius
+requirements = python3==3.10.14,kivy==2.2.1,android,pyjnius
 
 # (str) Supported orientation (landscape, sensorLandscape, portrait or all)
 orientation = portrait
@@ -42,6 +42,12 @@ android.sdk = 33
 
 # (str) Android NDK version to use
 android.ndk = 25b
+
+# (str) Android NDK path (leave empty for auto download)
+android.ndk_path =
+
+# (str) Android SDK path (leave empty for auto download)  
+android.sdk_path =
 
 # (bool) If True, then skip trying to update the Android sdk
 android.skip_update = False
