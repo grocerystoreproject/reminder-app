@@ -9,9 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-      ANDROID_NDK_ROOT: ${{ github.workspace }}/android-ndk
 
     steps:
     - name: Checkout repository
@@ -25,28 +22,58 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y python3-distutils python3-venv openjdk-17-jdk wget unzip build-essential libncurses5 libtinfo5 git
+        sudo apt-get install -y \
+          python3-pip \
+          python3-venv \
+          openjdk-17-jdk \
+          wget \
+          unzip \
+          build-essential \
+          git \
+          zip \
+          libncurses5 \
+          libncursesw5 \
+          libtinfo5 \
+          zlib1g-dev \
+          libssl-dev \
+          libffi-dev
 
-    - name: Install Buildozer and Cython
+    - name: Create and activate virtual environment
       run: |
-        python -m venv venv
+        python3 -m venv venv
         source venv/bin/activate
         pip install --upgrade pip setuptools wheel
-        pip install cython==0.29.34 buildozer==1.4.0
 
-    - name: Setup Android SDK & NDK
-      run: |
-        mkdir -p $ANDROID_SDK_ROOT
-        mkdir -p $ANDROID_NDK_ROOT
-        cd $ANDROID_SDK_ROOT
-        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-        unzip cmdline-tools.zip
-        rm cmdline-tools.zip
-        mv cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools
-        yes | $ANDROID_SDK_ROOT/cmdline-tools/bin/sdkmanager --licenses
-        $ANDROID_SDK_ROOT/cmdline-tools/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
-
-    - name: Build APK
+    - name: Install Buildozer and dependencies
       run: |
         source venv/bin/activate
-        buildozer android debug
+        pip install --upgrade cython==0.29.36
+        pip install --upgrade buildozer==1.5.0
+
+    - name: Setup Android environment
+      run: |
+        mkdir -p ~/.buildozer/android/platform
+        
+    - name: Cache Buildozer global directory
+      uses: actions/cache@v3
+      with:
+        path: ~/.buildozer
+        key: buildozer-${{ hashFiles('buildozer.spec') }}
+
+    - name: Cache Buildozer build directory
+      uses: actions/cache@v3
+      with:
+        path: .buildozer
+        key: buildozer-build-${{ hashFiles('**/*.py', 'buildozer.spec') }}
+
+    - name: Build APK with Buildozer
+      run: |
+        source venv/bin/activate
+        yes | buildozer android debug
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: reminderapp-debug
+        path: bin/*.apk
+        if-no-files-found: error
