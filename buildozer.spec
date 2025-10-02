@@ -43,6 +43,12 @@ android.sdk = 33
 # (str) Android NDK version to use
 android.ndk = 25b
 
+# (str) The Android gradle plugin version to be used
+android.gradle_dependencies = com.android.tools.build:gradle:7.4.0
+
+# (bool) Use --parallel with gradle builds
+android.gradle_parallel = False
+
 # (str) Android NDK path (leave empty for auto download)
 android.ndk_path =
 
