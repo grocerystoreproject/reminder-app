@@ -38,7 +38,13 @@ jobs:
           automake \
           libtool \
           pkg-config \
-          ccache
+          ccache \
+          libltdl-dev
+        
+    - name: Set Java environment
+      run: |
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        echo "/usr/lib/jvm/java-17-openjdk-amd64/bin" >> $GITHUB_PATH
 
     - name: Create and activate virtual environment
       run: |
@@ -75,7 +81,22 @@ jobs:
         source venv/bin/activate
         export USE_CCACHE=1
         export PYTHONUNBUFFERED=1
-        yes | buildozer -v android debug
+        export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
+        # Make gradlew executable if it exists
+        find ~/.buildozer -name gradlew -exec chmod +x {} \; 2>/dev/null || true
+        yes | buildozer -v android debug 2>&1 | tee build.log || (
+          echo "Build failed. Checking for gradlew..."
+          find ~/.buildozer -name gradlew -exec chmod +x {} \;
+          find ~/.buildozer -name "*.log" -exec echo "=== {} ===" \; -exec cat {} \;
+          exit 1
+        )
+    
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
