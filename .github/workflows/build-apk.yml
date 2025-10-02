@@ -81,22 +81,27 @@ jobs:
         source venv/bin/activate
         export USE_CCACHE=1
         export PYTHONUNBUFFERED=1
-        export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
-        # Make gradlew executable if it exists
-        find ~/.buildozer -name gradlew -exec chmod +x {} \; 2>/dev/null || true
-        yes | buildozer -v android debug 2>&1 | tee build.log || (
-          echo "Build failed. Checking for gradlew..."
-          find ~/.buildozer -name gradlew -exec chmod +x {} \;
-          find ~/.buildozer -name "*.log" -exec echo "=== {} ===" \; -exec cat {} \;
-          exit 1
-        )
+        export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m"
+        yes | buildozer android debug 2>&1 | tee build.log
+        
+    - name: Check build output
+      if: always()
+      run: |
+        echo "=== Checking for APK ==="
+        find . -name "*.apk" -type f
+        echo "=== Checking gradlew logs ==="
+        find ~/.buildozer -name "*.log" 2>/dev/null | head -20
+        echo "=== Last 100 lines of build log ==="
+        tail -100 build.log || true
     
     - name: Upload build log on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: build-log
-        path: build.log
+        path: |
+          build.log
+          ~/.buildozer/android/platform/build-arm64-v8a/dists/reminderapp/build/**/*.log
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
