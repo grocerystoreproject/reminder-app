@@ -62,7 +62,7 @@ android.entrypoint = org.kivy.android.PythonActivity
 android.apptheme = "@android:style/Theme.NoTitleBar"
 
 # (list) The Android archs to build for
-android.archs = arm64-v8a,armeabi-v7a
+android.archs = arm64-v8a
 
 # (bool) enables Android auto backup feature (Android API >=23)
 android.allow_backup = True
