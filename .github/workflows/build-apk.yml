@@ -17,7 +17,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.12"
+          python-version: "3.11"  # Use 3.11 instead of 3.12
 
       - name: Install system dependencies
         run: |
@@ -43,12 +43,12 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Install Buildozer
+      - name: Install Buildozer and distutils
         run: |
-          python3 -m venv venv
+          python -m venv venv
           source venv/bin/activate
           pip install --upgrade pip
-          pip install buildozer cython
+          pip install setuptools==67.7.2 buildozer cython  # setuptools provides distutils
 
       - name: Build APK
         run: |
