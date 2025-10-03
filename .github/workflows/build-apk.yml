@@ -104,11 +104,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Accept Android SDK Licenses
+      - name: Setup Android SDK
         run: |
+          # Download and setup Android SDK command-line tools
+          mkdir -p ~/.buildozer/android/platform/android-sdk/cmdline-tools
+          cd ~/.buildozer/android/platform/android-sdk/cmdline-tools
+          
+          # Download latest command-line tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip
+          mv cmdline-tools latest
+          
+          # Accept licenses
           mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
           echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
           echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "e9acab5b5fbb560a72cfaecce8946896ff6aab9d" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
 
       - name: Build APK with Buildozer
         id: build
