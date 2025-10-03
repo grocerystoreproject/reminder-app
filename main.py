@@ -17,6 +17,7 @@ from kivy.utils import platform
 from kivy.graphics import Color, RoundedRectangle, Line
 from kivy.metrics import dp
 from kivy.core.window import Window
+from kivy.core.audio import SoundLoader
 
 print("App starting...")
 
@@ -27,14 +28,32 @@ Window.clearcolor = (0.95, 0.96, 0.98, 1)
 if platform == 'android':
     print("Requesting Android permissions...")
     try:
-        from android.permissions import request_permissions, Permission
-        request_permissions([
-            Permission.VIBRATE, 
+        from android.permissions import request_permissions, Permission, check_permission
+        
+        # Request all necessary permissions
+        permissions = [
+            Permission.VIBRATE,
             Permission.WAKE_LOCK,
             Permission.SCHEDULE_EXACT_ALARM,
-            Permission.POST_NOTIFICATIONS
-        ])
+            Permission.POST_NOTIFICATIONS,
+            Permission.USE_EXACT_ALARM,
+            Permission.FOREGROUND_SERVICE,
+            Permission.READ_EXTERNAL_STORAGE
+        ]
+        
+        request_permissions(permissions)
         print("Permissions requested")
+        
+        # Check if we have notification permission (Android 13+)
+        try:
+            from jnius import autoclass
+            VERSION = autoclass('android.os.Build$VERSION')
+            if VERSION.SDK_INT >= 33:  # Android 13+
+                has_notification = check_permission(Permission.POST_NOTIFICATIONS)
+                print(f"Notification permission: {has_notification}")
+        except Exception as e:
+            print(f"Permission check error: {e}")
+            
     except Exception as e:
         print(f"Permission error: {e}")
 
@@ -65,12 +84,12 @@ class ReminderCard(ModernCard):
         super().__init__(bg_color=bg_color, **kwargs)
         self.orientation = 'vertical'
         self.size_hint_y = None
-        self.height = dp(120)
+        self.height = dp(130)
         self.padding = dp(15)
         self.spacing = dp(10)
         
         # Top row - Time and toggle
-        top_row = BoxLayout(size_hint_y=0.4, spacing=dp(10))
+        top_row = BoxLayout(size_hint_y=0.35, spacing=dp(10))
         
         # Time with icon
         time_box = BoxLayout(size_hint_x=0.6)
@@ -186,8 +205,10 @@ class ReminderApp(App):
         self.reminders = []
         self.editing_index = None
         self.alarm_popup = None
+        self.alarm_sound = None
         self.snooze_minutes = 5
-        self.triggered_reminders = set()  # Track triggered reminders to avoid duplicates
+        self.triggered_reminders = set()
+        self.last_check_minute = -1  # Track last checked minute
         
         # Setup data directory
         try:
@@ -203,6 +224,9 @@ class ReminderApp(App):
         except Exception as e:
             print(f"Data dir error: {e}")
             self.data_file = 'reminders.json'
+        
+        # Load available ringtones
+        self.load_ringtones()
         
         self.load_reminders()
         print(f"Loaded {len(self.reminders)} reminders")
@@ -302,10 +326,33 @@ class ReminderApp(App):
         root.add_widget(self.layout)
         
         self.refresh_reminder_list()
-        Clock.schedule_interval(self.check_reminders, 30)  # Check every 30 seconds
+        
+        # Check reminders every 10 seconds for better accuracy
+        Clock.schedule_interval(self.check_reminders, 10)
         
         print("UI built successfully")
         return root
+
+    def load_ringtones(self):
+        """Load available ringtones from assets folder"""
+        self.ringtones = {}
+        ringtone_dir = 'assets/ringtones'
+        
+        try:
+            if os.path.exists(ringtone_dir):
+                for file in os.listdir(ringtone_dir):
+                    if file.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                        name = os.path.splitext(file)[0]
+                        path = os.path.join(ringtone_dir, file)
+                        self.ringtones[name] = path
+                print(f"Loaded {len(self.ringtones)} ringtones: {list(self.ringtones.keys())}")
+            else:
+                print(f"Ringtone directory not found: {ringtone_dir}")
+        except Exception as e:
+            print(f"Error loading ringtones: {e}")
+        
+        # Add default option
+        self.ringtones['Default (Vibrate)'] = None
 
     def update_time(self, dt):
         now = datetime.datetime.now()
@@ -327,13 +374,16 @@ class ReminderApp(App):
                             'recurring': item.get('recurring', True),
                             'enabled': item.get('enabled', True),
                             'days': item.get('days', list(range(7))),
-                            'snooze_until': None
+                            'snooze_until': None,
+                            'ringtone': item.get('ringtone', 'Default (Vibrate)')
                         })
                 print(f"Loaded {len(self.reminders)} reminders")
             else:
                 print("No reminders file found")
         except Exception as e:
             print(f"Load error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def save_reminders(self):
         try:
@@ -342,7 +392,8 @@ class ReminderApp(App):
                 'time': r['time'].strftime('%H:%M'),
                 'recurring': r.get('recurring', True),
                 'enabled': r.get('enabled', True),
-                'days': r.get('days', list(range(7)))
+                'days': r.get('days', list(range(7))),
+                'ringtone': r.get('ringtone', 'Default (Vibrate)')
             } for r in self.reminders]
             
             os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
@@ -351,6 +402,8 @@ class ReminderApp(App):
             print(f"Saved {len(data)} reminders")
         except Exception as e:
             print(f"Save error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def show_add_dialog(self, instance):
         self.editing_index = None
@@ -358,6 +411,11 @@ class ReminderApp(App):
 
     def show_reminder_dialog(self, reminder=None):
         content = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(15))
+        
+        # Scrollable content for better UX
+        scroll = ScrollView(size_hint=(1, 1))
+        form = BoxLayout(orientation='vertical', spacing=dp(12), size_hint_y=None)
+        form.bind(minimum_height=form.setter('height'))
         
         # Title label
         title_lbl = Label(
@@ -368,7 +426,7 @@ class ReminderApp(App):
             height=dp(40),
             color=(0.2, 0.3, 0.4, 1)
         )
-        content.add_widget(title_lbl)
+        form.add_widget(title_lbl)
         
         # Text input with modern styling
         text_input = TextInput(
@@ -383,7 +441,7 @@ class ReminderApp(App):
         )
         if reminder:
             text_input.text = reminder['text']
-        content.add_widget(text_input)
+        form.add_widget(text_input)
 
         # Time selection section
         time_label = Label(
@@ -395,7 +453,7 @@ class ReminderApp(App):
             color=(0.3, 0.3, 0.3, 1)
         )
         time_label.bind(size=time_label.setter('text_size'))
-        content.add_widget(time_label)
+        form.add_widget(time_label)
         
         time_box = BoxLayout(size_hint=(1, None), height=dp(50), spacing=dp(5))
         
@@ -424,7 +482,29 @@ class ReminderApp(App):
         time_box.add_widget(Label(text=":", size_hint=(0.1, 1), font_size='20sp'))
         time_box.add_widget(minute)
         time_box.add_widget(ampm)
-        content.add_widget(time_box)
+        form.add_widget(time_box)
+
+        # Ringtone selection
+        if self.ringtones:
+            ringtone_label = Label(
+                text="🔔 Ringtone",
+                font_size='16sp',
+                size_hint=(1, None),
+                height=dp(30),
+                halign='left',
+                color=(0.3, 0.3, 0.3, 1)
+            )
+            ringtone_label.bind(size=ringtone_label.setter('text_size'))
+            form.add_widget(ringtone_label)
+            
+            ringtone_spinner = Spinner(
+                text=reminder.get('ringtone', 'Default (Vibrate)') if reminder else 'Default (Vibrate)',
+                values=sorted(self.ringtones.keys()),
+                size_hint=(1, None),
+                height=dp(45),
+                background_color=(0.95, 0.95, 0.95, 1)
+            )
+            form.add_widget(ringtone_spinner)
 
         # Days selection
         days_label = Label(
@@ -436,7 +516,7 @@ class ReminderApp(App):
             color=(0.3, 0.3, 0.3, 1)
         )
         days_label.bind(size=days_label.setter('text_size'))
-        content.add_widget(days_label)
+        form.add_widget(days_label)
         
         days_box = BoxLayout(size_hint=(1, None), height=dp(60), spacing=dp(3))
         day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -459,7 +539,7 @@ class ReminderApp(App):
             cb_box.add_widget(day_lbl)
             day_checks.append(cb)
             days_box.add_widget(cb_box)
-        content.add_widget(days_box)
+        form.add_widget(days_box)
 
         # Quick select buttons
         quick_box = BoxLayout(size_hint=(1, None), height=dp(40), spacing=dp(5))
@@ -509,7 +589,10 @@ class ReminderApp(App):
         quick_box.add_widget(weekday_btn)
         quick_box.add_widget(weekend_btn)
         quick_box.add_widget(all_btn)
-        content.add_widget(quick_box)
+        form.add_widget(quick_box)
+
+        scroll.add_widget(form)
+        content.add_widget(scroll)
 
         # Buttons
         btn_box = BoxLayout(size_hint=(1, None), height=dp(50), spacing=dp(10))
@@ -538,7 +621,7 @@ class ReminderApp(App):
         popup = Popup(
             title="",
             content=content,
-            size_hint=(0.95, 0.85),
+            size_hint=(0.95, 0.9),
             separator_height=0,
             background_color=(1, 1, 1, 0.95)
         )
@@ -570,7 +653,8 @@ class ReminderApp(App):
                 'recurring': len(selected_days) > 1 or len(selected_days) < 7,
                 'enabled': True,
                 'days': sorted(selected_days),
-                'snooze_until': None
+                'snooze_until': None,
+                'ringtone': ringtone_spinner.text if self.ringtones else 'Default (Vibrate)'
             }
 
             if self.editing_index is not None:
@@ -596,16 +680,19 @@ class ReminderApp(App):
     def toggle_reminder(self, index):
         if 0 <= index < len(self.reminders):
             self.reminders[index]['enabled'] = not self.reminders[index].get('enabled', True)
-            self.reminders[index]['played'] = False  # Reset played status
-            # Remove from triggered set when toggling
-            reminder_key = f"{index}_{self.reminders[index]['time']}"
+            self.reminders[index]['played'] = False
+            
+            # Clear trigger tracking when toggling
+            reminder = self.reminders[index]
+            reminder_key = f"{index}_{reminder['time'].hour:02d}{reminder['time'].minute:02d}"
             self.triggered_reminders.discard(reminder_key)
+            
             self.save_reminders()
             self.refresh_reminder_list()
+            print(f"Toggled reminder {index} to {'ON' if self.reminders[index]['enabled'] else 'OFF'}")
 
     def delete_reminder(self, index):
         if 0 <= index < len(self.reminders):
-            # Confirmation popup
             content = BoxLayout(orientation='vertical', spacing=dp(20), padding=dp(20))
             content.add_widget(Label(
                 text="Delete this reminder?",
@@ -645,8 +732,8 @@ class ReminderApp(App):
             )
             
             def do_delete(instance):
-                # Remove from triggered set
-                reminder_key = f"{index}_{self.reminders[index]['time']}"
+                reminder = self.reminders[index]
+                reminder_key = f"{index}_{reminder['time'].hour:02d}{reminder['time'].minute:02d}"
                 self.triggered_reminders.discard(reminder_key)
                 
                 del self.reminders[index]
@@ -706,57 +793,108 @@ class ReminderApp(App):
             self.reminder_list.add_widget(ReminderCard(r, idx, callbacks))
 
     def check_reminders(self, dt):
+        """Check reminders with improved accuracy"""
         try:
             now = datetime.datetime.now()
+            current_minute = now.hour * 60 + now.minute
+            
+            # Only check once per minute
+            if current_minute == self.last_check_minute:
+                return
+            
+            self.last_check_minute = current_minute
             current_time = now.time().replace(second=0, microsecond=0)
             current_day = now.weekday()
+            
+            print(f"Checking reminders at {current_time}, day {current_day}")
             
             for idx, r in enumerate(self.reminders):
                 if not r.get('enabled'):
                     continue
                 
                 # Create unique key for this reminder
-                reminder_key = f"{idx}_{r['time']}"
+                reminder_key = f"{idx}_{r['time'].hour:02d}{r['time'].minute:02d}"
                 
                 # Check snooze
                 if r.get('snooze_until'):
                     if now >= r['snooze_until']:
+                        print(f"Snooze ended for reminder {idx}")
                         r['snooze_until'] = None
                         r['played'] = False
                         self.triggered_reminders.discard(reminder_key)
                     else:
                         continue
                 
+                # Check if day matches
                 if current_day not in r.get('days', list(range(7))):
                     continue
-                    
-                # Check if reminder should trigger and hasn't been triggered yet
-                if r['time'] == current_time and not r['played'] and reminder_key not in self.triggered_reminders:
-                    self.show_alarm(r)
+                
+                # Check if time matches and hasn't been triggered yet
+                reminder_time = r['time'].replace(second=0, microsecond=0)
+                if reminder_time == current_time and not r['played'] and reminder_key not in self.triggered_reminders:
+                    print(f"Triggering reminder {idx}: {r['text']}")
+                    self.show_alarm(r, idx)
                     r['played'] = True
                     self.triggered_reminders.add(reminder_key)
             
             # Reset at midnight
             if current_time.hour == 0 and current_time.minute == 0:
+                print("Midnight reset")
                 for r in self.reminders:
                     if not r.get('snooze_until'):
                         r['played'] = False
                 self.triggered_reminders.clear()
+                
         except Exception as e:
             print(f"Check reminders error: {e}")
             import traceback
             traceback.print_exc()
 
-    def snooze_alarm(self, reminder):
+    def snooze_alarm(self, reminder, idx):
         """Snooze the alarm for specified minutes"""
         reminder['snooze_until'] = datetime.datetime.now() + datetime.timedelta(minutes=self.snooze_minutes)
         reminder['played'] = True
+        
+        # Remove from triggered set so it can trigger again after snooze
+        reminder_key = f"{idx}_{reminder['time'].hour:02d}{reminder['time'].minute:02d}"
+        self.triggered_reminders.discard(reminder_key)
+        
         if self.alarm_popup:
             self.alarm_popup.dismiss()
-        print(f"Snoozed for {self.snooze_minutes} minutes")
+        
+        if self.alarm_sound:
+            self.alarm_sound.stop()
+            
+        print(f"Snoozed for {self.snooze_minutes} minutes until {reminder['snooze_until']}")
 
-    def show_alarm(self, reminder):
+    def play_ringtone(self, ringtone_name):
+        """Play selected ringtone"""
         try:
+            if self.alarm_sound:
+                self.alarm_sound.stop()
+                self.alarm_sound.unload()
+                self.alarm_sound = None
+            
+            if ringtone_name and ringtone_name != 'Default (Vibrate)':
+                ringtone_path = self.ringtones.get(ringtone_name)
+                if ringtone_path and os.path.exists(ringtone_path):
+                    self.alarm_sound = SoundLoader.load(ringtone_path)
+                    if self.alarm_sound:
+                        self.alarm_sound.loop = True
+                        self.alarm_sound.play()
+                        print(f"Playing ringtone: {ringtone_name}")
+                    else:
+                        print(f"Failed to load ringtone: {ringtone_path}")
+        except Exception as e:
+            print(f"Ringtone error: {e}")
+
+    def show_alarm(self, reminder, idx):
+        """Show alarm popup with vibration and sound"""
+        try:
+            # Play ringtone
+            ringtone = reminder.get('ringtone', 'Default (Vibrate)')
+            self.play_ringtone(ringtone)
+            
             # Vibrate on Android
             if platform == 'android':
                 try:
@@ -872,9 +1010,15 @@ class ReminderApp(App):
                 background_color=(1, 1, 1, 0.98)
             )
             
-            snooze_btn.bind(on_press=lambda x: self.snooze_alarm(reminder))
+            def on_dismiss(instance):
+                if self.alarm_sound:
+                    self.alarm_sound.stop()
+            
+            snooze_btn.bind(on_press=lambda x: self.snooze_alarm(reminder, idx))
             dismiss_btn.bind(on_press=lambda x: self.alarm_popup.dismiss())
+            self.alarm_popup.bind(on_dismiss=on_dismiss)
             self.alarm_popup.open()
+            
         except Exception as e:
             print(f"Show alarm error: {e}")
             import traceback
@@ -887,11 +1031,15 @@ class ReminderApp(App):
     def on_resume(self):
         """Handle app resume"""
         self.refresh_reminder_list()
+        # Reset last check to force immediate check on resume
+        self.last_check_minute = -1
 
     def on_stop(self):
         """Save data when app closes"""
         print("App stopping...")
         self.save_reminders()
+        if self.alarm_sound:
+            self.alarm_sound.stop()
 
 
 if __name__ == "__main__":
