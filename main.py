@@ -19,14 +19,17 @@ from kivy.uix.checkbox import CheckBox
 from kivy.graphics import Color, RoundedRectangle, Line
 from kivy.utils import platform
 
+# Request permissions on Android
 if platform == 'android':
-    from android.permissions import request_permissions, Permission
-    request_permissions([
-        Permission.VIBRATE, Permission.WAKE_LOCK, Permission.RECEIVE_BOOT_COMPLETED,
-        Permission.SCHEDULE_EXACT_ALARM, Permission.POST_NOTIFICATIONS,
-        Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE,
-        Permission.READ_MEDIA_AUDIO
-    ])
+    try:
+        from android.permissions import request_permissions, Permission
+        request_permissions([
+            Permission.VIBRATE,
+            Permission.WAKE_LOCK,
+            Permission.POST_NOTIFICATIONS
+        ])
+    except Exception as e:
+        print(f"Permission request error: {e}")
 
 
 class RoundedButton(Button):
@@ -83,9 +86,9 @@ class ReminderCard(BoxLayout):
         
         # Top row
         top = BoxLayout(size_hint_y=0.35, spacing=8)
-        status = "🔔" if reminder.get('enabled', True) else "🔕"
+        status = "ON" if reminder.get('enabled', True) else "OFF"
         text_lbl = Label(
-            text=f"{status} {reminder['text']}", 
+            text=f"[{status}] {reminder['text']}", 
             size_hint_x=0.65, halign='left', valign='middle',
             color=(0.2, 0.3, 0.4, 1), font_size='16sp', bold=True
         )
@@ -122,7 +125,7 @@ class ReminderCard(BoxLayout):
             ringtone = ringtone[:17] + "..."
         
         ring_lbl = Label(
-            text=f"🎵 {ringtone}",
+            text=f"Sound: {ringtone}",
             size_hint_x=0.4, halign='left',
             color=(0.5, 0.5, 0.5, 1), font_size='13sp'
         )
@@ -180,19 +183,44 @@ class ReminderApp(App):
         self.available_ringtones = []
         self.editing_index = None
         
-        # Scan ringtones
-        ringtone_dir = "assets/ringtones"
-        if os.path.exists(ringtone_dir):
-            for file in os.listdir(ringtone_dir):
-                if file.lower().endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                    self.available_ringtones.append(os.path.join(ringtone_dir, file))
-        if not self.available_ringtones:
-            self.available_ringtones = ["default.mp3"]
-
+        # Setup data directory
         if platform == 'android':
-            self.data_file = os.path.join(self.user_data_dir, 'reminders.json')
+            from android.storage import app_storage_path
+            storage_path = app_storage_path()
+            self.data_dir = storage_path
         else:
-            self.data_file = os.path.join(os.path.dirname(__file__), 'reminders.json')
+            self.data_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        self.data_file = os.path.join(self.data_dir, 'reminders.json')
+        
+        # Scan ringtones - check multiple possible locations
+        ringtone_paths = []
+        
+        # For Android, check app directory
+        if platform == 'android':
+            possible_paths = [
+                os.path.join(self.data_dir, 'assets', 'ringtones'),
+                '/data/data/org.reminder.reminderapp/files/app/assets/ringtones',
+                'assets/ringtones'
+            ]
+        else:
+            possible_paths = [
+                os.path.join(os.path.dirname(__file__), 'assets', 'ringtones'),
+                'assets/ringtones'
+            ]
+        
+        for ringtone_dir in possible_paths:
+            if os.path.exists(ringtone_dir):
+                try:
+                    for file in os.listdir(ringtone_dir):
+                        if file.lower().endswith(('.mp3', '.wav', '.ogg', '.m4a')):
+                            self.available_ringtones.append(os.path.join(ringtone_dir, file))
+                except Exception as e:
+                    print(f"Error scanning {ringtone_dir}: {e}")
+        
+        # Fallback to default
+        if not self.available_ringtones:
+            self.available_ringtones = ["default_beep"]
 
         self.load_reminders()
 
@@ -557,16 +585,26 @@ class ReminderApp(App):
         self.current_reminder = reminder
         if platform == 'android' and reminder.get('vibrate', True):
             try:
-                from android import vibrate
-                vibrate(1)
-            except:
-                pass
+                from jnius import autoclass
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                Context = autoclass('android.content.Context')
+                Vibrator = autoclass('android.os.Vibrator')
+                activity = PythonActivity.mActivity
+                vibrator = activity.getSystemService(Context.VIBRATOR_SERVICE)
+                vibrator.vibrate(1000)  # Vibrate for 1 second
+            except Exception as e:
+                print(f"Vibration error: {e}")
         
-        self.current_sound = SoundLoader.load(reminder['ringtone'])
-        if self.current_sound:
-            self.current_sound.loop = True
-            self.current_sound.volume = 1.0
-            self.current_sound.play()
+        # Try to load sound
+        try:
+            if os.path.exists(reminder['ringtone']):
+                self.current_sound = SoundLoader.load(reminder['ringtone'])
+                if self.current_sound:
+                    self.current_sound.loop = True
+                    self.current_sound.volume = 1.0
+                    self.current_sound.play()
+        except Exception as e:
+            print(f"Sound error: {e}")
         
         Clock.schedule_once(lambda dt: self.show_alarm(reminder), 0)
 
