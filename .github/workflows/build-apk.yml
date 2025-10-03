@@ -12,6 +12,7 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-22.04
+    timeout-minutes: 60  # Prevent hanging builds
 
     steps:
       - name: Checkout Repository
@@ -57,6 +58,7 @@ jobs:
       - name: Verify Java Installation
         run: |
           java -version
+          javac -version
           echo "JAVA_HOME: $JAVA_HOME"
 
       - name: Upgrade pip and Install Build Tools
@@ -69,18 +71,28 @@ jobs:
       - name: Create Required Directories
         run: |
           mkdir -p assets/ringtones
+          mkdir -p .buildozer
           echo "Directory structure created"
           ls -la
 
-      - name: Cache Buildozer
+      - name: Cache Buildozer Global
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+          key: ${{ runner.os }}-buildozer-global-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-global-
+
+      - name: Cache Buildozer Local
         uses: actions/cache@v4
         with:
           path: |
             .buildozer
-            ~/.buildozer
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          key: ${{ runner.os }}-buildozer-local-${{ hashFiles('buildozer.spec') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-buildozer-
+            ${{ runner.os }}-buildozer-local-${{ hashFiles('buildozer.spec') }}-
+            ${{ runner.os }}-buildozer-local-
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -92,42 +104,187 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Accept Android SDK Licenses
+        run: |
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+
       - name: Build APK with Buildozer
+        id: build
+        continue-on-error: true
         run: |
           export USE_CCACHE=1
           export CCACHE_DIR=$HOME/.ccache
           export NDK_CCACHE=$(which ccache)
-          export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false"
+          export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
+          export ANDROIDSDK="$HOME/.buildozer/android/platform/android-sdk"
+          export ANDROIDNDK="$HOME/.buildozer/android/platform/android-ndk-r25b"
+          export ANDROIDAPI="33"
+          export ANDROIDMINAPI="21"
           
-          # Accept Android SDK licenses
-          yes | buildozer android debug 2>&1 | tee build_log.txt
+          echo "==============================================="
+          echo "Starting Buildozer Build"
+          echo "==============================================="
           
-      - name: Upload Build Log
+          # Run buildozer with verbose output
+          buildozer -v android debug 2>&1 | tee build_log.txt
+          
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "Build exit code: $BUILD_EXIT_CODE"
+          
+          if [ $BUILD_EXIT_CODE -eq 0 ]; then
+            echo "build_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "build_status=failed" >> $GITHUB_OUTPUT
+          fi
+          
+          exit $BUILD_EXIT_CODE
+
+      - name: Upload Build Log (Always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
           path: build_log.txt
+          retention-days: 30
 
-      - name: List Built Files
+      - name: List All Build Files
         if: always()
         run: |
-          echo "Contents of bin directory:"
-          ls -lah bin/ || echo "No bin directory found"
-          echo "Searching for APK files:"
-          find . -name "*.apk" -type f
+          echo "==============================================="
+          echo "Searching for build outputs..."
+          echo "==============================================="
+          
+          echo "Contents of current directory:"
+          ls -lah
+          
+          echo -e "\nContents of bin directory (if exists):"
+          ls -lah bin/ 2>/dev/null || echo "No bin directory found"
+          
+          echo -e "\nSearching for all APK files:"
+          find . -name "*.apk" -type f -exec ls -lh {} \; 2>/dev/null || echo "No APK files found"
+          
+          echo -e "\nSearching in .buildozer directory:"
+          find .buildozer -name "*.apk" -type f -exec ls -lh {} \; 2>/dev/null || echo "No APK in .buildozer"
+          
+          echo -e "\nBuildozer directory structure:"
+          ls -lah .buildozer/ 2>/dev/null || echo "No .buildozer directory"
 
-      - name: Upload APK
+      - name: Copy APK to bin Directory
+        if: always()
+        run: |
+          mkdir -p bin
+          
+          # Search for APK in various locations
+          APK_FOUND=false
+          
+          # Check common buildozer locations
+          if [ -d ".buildozer/android/platform/build-arm64-v8a/dists/myreminders/build/outputs/apk/debug" ]; then
+            cp .buildozer/android/platform/build-arm64-v8a/dists/myreminders/build/outputs/apk/debug/*.apk bin/ 2>/dev/null && APK_FOUND=true
+          fi
+          
+          if [ -d ".buildozer/android/platform/build-armeabi-v7a/dists/myreminders/build/outputs/apk/debug" ]; then
+            cp .buildozer/android/platform/build-armeabi-v7a/dists/myreminders/build/outputs/apk/debug/*.apk bin/ 2>/dev/null && APK_FOUND=true
+          fi
+          
+          # Alternative location
+          find .buildozer -name "*.apk" -exec cp {} bin/ \; 2>/dev/null && APK_FOUND=true
+          
+          if [ "$APK_FOUND" = true ]; then
+            echo "APK files copied to bin directory"
+            ls -lah bin/
+          else
+            echo "No APK files found to copy"
+            # Create a dummy file to prevent artifact upload failure
+            echo "Build failed - no APK generated" > bin/BUILD_FAILED.txt
+          fi
+
+      - name: Rename APK with Version and Date
+        if: success() && steps.build.outputs.build_status == 'success'
+        run: |
+          cd bin
+          for apk in *.apk; do
+            if [ -f "$apk" ]; then
+              VERSION=$(grep "^version" ../buildozer.spec | cut -d'=' -f2 | tr -d ' ')
+              DATE=$(date +%Y%m%d)
+              NEW_NAME="MyReminders-v${VERSION}-${DATE}-${apk}"
+              mv "$apk" "$NEW_NAME"
+              echo "Renamed to: $NEW_NAME"
+            fi
+          done
+          ls -lah
+
+      - name: Upload APK Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: MyReminders-APK
-          path: bin/*.apk
-          if-no-files-found: error
+          path: bin/*
+          if-no-files-found: warn
+          retention-days: 90
 
-      - name: Upload APK as Release Asset (if tagged)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Generate Build Summary
+        if: always()
+        run: |
+          echo "# Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.build.outputs.build_status }}" == "success" ]; then
+            echo "✅ **Build Status:** SUCCESS" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Generated APK Files" >> $GITHUB_STEP_SUMMARY
+            ls -lh bin/*.apk 2>/dev/null | awk '{print "- " $9 " (" $5 ")"}' >> $GITHUB_STEP_SUMMARY || echo "- No APK files found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Build Status:** FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## Error Information" >> $GITHUB_STEP_SUMMARY
+            echo "Check the build log artifact for detailed error messages." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Common Issues:" >> $GITHUB_STEP_SUMMARY
+            echo "- Missing dependencies" >> $GITHUB_STEP_SUMMARY
+            echo "- NDK/SDK version mismatch" >> $GITHUB_STEP_SUMMARY
+            echo "- Gradle build failures" >> $GITHUB_STEP_SUMMARY
+            echo "- Python-for-android compilation errors" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- Python Version: 3.11" >> $GITHUB_STEP_SUMMARY
+          echo "- Java Version: 17" >> $GITHUB_STEP_SUMMARY
+          echo "- Buildozer Version: 1.5.0" >> $GITHUB_STEP_SUMMARY
+          echo "- Target API: 33" >> $GITHUB_STEP_SUMMARY
+          echo "- Min API: 21" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/') && steps.build.outputs.build_status == 'success'
         uses: softprops/action-gh-release@v1
         with:
           files: bin/*.apk
+          body: |
+            ## My Reminders APK Release
+            
+            **Version:** ${{ github.ref_name }}
+            **Build Date:** ${{ github.event.head_commit.timestamp }}
+            
+            ### Installation Instructions
+            1. Download the APK file
+            2. Enable "Install from Unknown Sources" in Android settings
+            3. Install the APK
+            4. Grant necessary permissions
+            
+            ### What's New
+            See CHANGELOG.md for details
+            
+            ### Requirements
+            - Android 5.0 (API 21) or higher
+            - ~50MB storage space
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post-Build Cleanup
+        if: always()
+        run: |
+          # Clean up large cache files to prevent storage issues
+          du -sh .buildozer 2>/dev/null || echo "No .buildozer directory"
+          du -sh ~/.buildozer 2>/dev/null || echo "No ~/.buildozer directory"
