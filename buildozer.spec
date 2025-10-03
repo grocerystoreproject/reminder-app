@@ -115,7 +115,7 @@ android.apptheme = "@android:style/Theme.NoTitleBar"
 #android.gradle_dependencies =
 
 # (bool) Enable AndroidX support
-#android.enable_androidx = False
+android.enable_androidx = True
 
 # (list) add java compile options
 # this can for example be necessary when importing certain java libraries using the 'android.gradle_dependencies' option
@@ -181,8 +181,8 @@ android.logcat_filters = *:S python:D
 android.copy_libs = 1
 
 # (str) The Android arch to build for, choices: armeabi-v7a, arm64-v8a, x86, x86_64
-# In past, was `android.arch` as we weren't supporting builds for multiple archs at the same time.
-android.archs = arm64-v8a,armeabi-v7a
+# Start with one arch for faster builds, add more later
+android.archs = arm64-v8a
 
 # (int) overrides automatic versionCode computation (used in build.gradle)
 # this is not the same as app version and should only be edited if you know what you're doing
@@ -197,13 +197,13 @@ android.allow_backup = True
 # (str) If True, then skip trying to update the Android sdk
 # This can be useful to avoid excess Internet downloads or save time
 # when an update is due and you just want to test/build your package
-# android.skip_update = False
+android.skip_update = False
 
 # (bool) If True, then automatically accept SDK license
 # agreements. This is intended for automation only. If set to False,
 # the default, you will be shown the license when first running
 # buildozer.
-# android.accept_sdk_license = False
+android.accept_sdk_license = True
 
 # (str) Android entry point, default is ok for Kivy-based app
 #android.entrypoint = org.kivy.android.PythonActivity
@@ -215,7 +215,7 @@ android.allow_backup = True
 #android.service_class_name = org.kivy.android.PythonService
 
 # (str) python-for-android branch to use, defaults to master
-#p4a.branch = master
+p4a.branch = develop
 
 # (str) python-for-android fork to use in case if p4a.branch is not specified, defaults to kivy
 #p4a.fork = kivy
