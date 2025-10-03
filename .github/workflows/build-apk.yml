@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -46,37 +46,27 @@ jobs:
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "/usr/lib/jvm/java-17-openjdk-amd64/bin" >> $GITHUB_PATH
 
-    - name: Create and activate virtual environment
+    - name: Create virtual environment
       run: |
         python3 -m venv venv
         source venv/bin/activate
         pip install --upgrade pip setuptools wheel
 
-    - name: Install Buildozer and dependencies
+    - name: Install Buildozer
       run: |
         source venv/bin/activate
-        pip install --upgrade cython==0.29.36
-        pip install --upgrade buildozer==1.5.0
-        pip install --upgrade python-for-android==2024.1.21
+        pip install cython==0.29.36
+        pip install buildozer==1.5.0
 
-    - name: Setup Android environment
-      run: |
-        mkdir -p ~/.buildozer/android/platform
-        echo "export SETUPTOOLS_USE_DISTUTILS=stdlib" >> $GITHUB_ENV
-        
-    - name: Cache Buildozer global directory
+    - name: Cache Buildozer
       uses: actions/cache@v4
       with:
-        path: ~/.buildozer
+        path: |
+          ~/.buildozer
+          .buildozer
         key: buildozer-${{ hashFiles('buildozer.spec') }}
 
-    - name: Cache Buildozer build directory
-      uses: actions/cache@v4
-      with:
-        path: .buildozer
-        key: buildozer-build-${{ hashFiles('**/*.py', 'buildozer.spec') }}
-
-    - name: Build APK with Buildozer
+    - name: Build APK
       run: |
         source venv/bin/activate
         export USE_CCACHE=1
@@ -84,28 +74,15 @@ jobs:
         export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx2048m"
         yes | buildozer android debug 2>&1 | tee build.log
         
-    - name: Check build output
-      if: always()
-      run: |
-        echo "=== Checking for APK ==="
-        find . -name "*.apk" -type f
-        echo "=== Checking gradlew logs ==="
-        find ~/.buildozer -name "*.log" 2>/dev/null | head -20
-        echo "=== Last 100 lines of build log ==="
-        tail -100 build.log || true
-    
-    - name: Upload build log on failure
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: ReminderApp-APK
+        path: bin/*.apk
+        
+    - name: Upload build log
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: build-log
-        path: |
-          build.log
-          ~/.buildozer/android/platform/build-arm64-v8a/dists/reminderapp/build/**/*.log
-
-    - name: Upload APK artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: reminderapp-debug
-        path: bin/*.apk
-        if-no-files-found: error
+        path: build.log
