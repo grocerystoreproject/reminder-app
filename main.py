@@ -100,7 +100,7 @@ class ReminderCard(BoxLayout):
         top.add_widget(text_lbl)
         top.add_widget(time_lbl)
         
-        # Middle row - days and repeat info
+        # Middle row
         middle = BoxLayout(size_hint_y=0.3, spacing=5)
         days_str = self.get_days_string(reminder.get('days', []))
         repeat_str = "Daily" if reminder.get('recurring') else "Once"
@@ -144,7 +144,7 @@ class ReminderCard(BoxLayout):
         toggle_btn.bind(on_press=lambda x: callbacks['toggle'](index, x))
         
         del_btn = RoundedButton(
-            text="Delete", size_hint_x=0.2,
+            text="Del", size_hint_x=0.2,
             bg_color=(0.95, 0.4, 0.4, 1),
             color=(1, 1, 1, 1), font_size='13sp'
         )
@@ -190,7 +190,6 @@ class ReminderApp(App):
             self.available_ringtones = ["default.mp3"]
 
         if platform == 'android':
-            from android.storage import primary_external_storage_path
             self.data_file = os.path.join(self.user_data_dir, 'reminders.json')
         else:
             self.data_file = os.path.join(os.path.dirname(__file__), 'reminders.json')
@@ -218,7 +217,7 @@ class ReminderApp(App):
         self.layout.add_widget(header)
         Clock.schedule_interval(self.update_time, 1)
 
-        # Quick action buttons
+        # Quick actions
         quick_actions = BoxLayout(size_hint=(1, None), height=50, spacing=8)
         add_quick = RoundedButton(text="Quick Add", bg_color=(0.2, 0.7, 0.5, 1),
                                  color=(1, 1, 1, 1), font_size='15sp')
@@ -230,7 +229,7 @@ class ReminderApp(App):
         quick_actions.add_widget(sort_btn)
         self.layout.add_widget(quick_actions)
 
-        # Search bar
+        # Search
         self.search_input = RoundedTextInput(
             hint_text="Search reminders...",
             size_hint=(1, None), height=45,
@@ -247,7 +246,7 @@ class ReminderApp(App):
         self.stats_label.bind(size=self.stats_label.setter('text_size'))
         self.layout.add_widget(self.stats_label)
 
-        # Reminders list
+        # List
         scroll = ScrollView(size_hint=(1, 1))
         self.reminder_list = BoxLayout(orientation="vertical", size_hint_y=None, spacing=12)
         self.reminder_list.bind(minimum_height=self.reminder_list.setter('height'))
@@ -322,7 +321,6 @@ class ReminderApp(App):
     def show_reminder_dialog(self, reminder=None):
         content = BoxLayout(orientation='vertical', spacing=10, padding=15)
         
-        # Text input
         text_input = RoundedTextInput(
             hint_text="Reminder text", size_hint=(1, None), height=50,
             multiline=False, font_size='15sp', padding=[15, 15]
@@ -331,7 +329,6 @@ class ReminderApp(App):
             text_input.text = reminder['text']
         content.add_widget(text_input)
 
-        # Time
         time_box = BoxLayout(size_hint=(1, None), height=50, spacing=5)
         hour = Spinner(
             text=str(reminder['time'].hour % 12 or 12) if reminder else "12",
@@ -352,7 +349,6 @@ class ReminderApp(App):
         time_box.add_widget(ampm)
         content.add_widget(time_box)
 
-        # Ringtone
         ringtone_box = BoxLayout(size_hint=(1, None), height=50)
         ringtone_names = [os.path.basename(r) for r in self.available_ringtones]
         current_ringtone = os.path.basename(reminder['ringtone']) if reminder else ringtone_names[0]
@@ -360,7 +356,6 @@ class ReminderApp(App):
         ringtone_box.add_widget(ringtone)
         content.add_widget(ringtone_box)
 
-        # Days selector
         days_label = Label(text="Repeat on:", size_hint=(1, None), height=30, halign='left')
         days_label.bind(size=days_label.setter('text_size'))
         content.add_widget(days_label)
@@ -377,14 +372,12 @@ class ReminderApp(App):
             days_box.add_widget(cb_box)
         content.add_widget(days_box)
 
-        # Vibrate toggle
         vib_box = BoxLayout(size_hint=(1, None), height=40)
         vib_box.add_widget(Label(text="Vibrate:", halign='left'))
         vib_switch = Switch(active=reminder.get('vibrate', True) if reminder else True)
         vib_box.add_widget(vib_switch)
         content.add_widget(vib_box)
 
-        # Notes
         notes_input = RoundedTextInput(
             hint_text="Notes (optional)", size_hint=(1, None), height=60,
             multiline=True, font_size='14sp', padding=[15, 10]
@@ -393,7 +386,6 @@ class ReminderApp(App):
             notes_input.text = reminder.get('notes', '')
         content.add_widget(notes_input)
 
-        # Buttons
         btn_box = BoxLayout(size_hint=(1, None), height=50, spacing=10)
         save_btn = RoundedButton(text="Save", bg_color=(0.2, 0.7, 0.5, 1), color=(1, 1, 1, 1))
         cancel_btn = RoundedButton(text="Cancel", bg_color=(0.6, 0.6, 0.6, 1), color=(1, 1, 1, 1))
@@ -593,4 +585,67 @@ class ReminderApp(App):
         content.add_widget(Label(text=datetime.datetime.now().strftime('%I:%M %p'), font_size='18sp', color=(0.5, 0.5, 0.5, 1), size_hint=(1, 0.15)))
         
         btns = BoxLayout(size_hint=(1, 0.3), spacing=10)
-        stop = RoundedButton(text="STOP", bg_color=(0.95, 0.4, 0.4, 1), color=(1, 1, 1, 1), font_size='16sp
+        stop = RoundedButton(text="STOP", bg_color=(0.95, 0.4, 0.4, 1), color=(1, 1, 1, 1), font_size='16sp', bold=True)
+        snooze = RoundedButton(text="SNOOZE 5min", bg_color=(1, 0.7, 0.3, 1), color=(1, 1, 1, 1), font_size='16sp', bold=True)
+        btns.add_widget(stop)
+        btns.add_widget(snooze)
+        content.add_widget(btns)
+        
+        self.alarm_popup = Popup(content=content, size_hint=(0.9, 0.5), background='', separator_height=0, auto_dismiss=False)
+        stop.bind(on_press=lambda x: self.stop_alarm())
+        snooze.bind(on_press=lambda x: self.snooze_alarm())
+        self.alarm_popup.open()
+
+    def stop_alarm(self):
+        if self.current_sound:
+            self.current_sound.stop()
+            self.current_sound = None
+        if self.alarm_popup:
+            self.alarm_popup.dismiss()
+            self.alarm_popup = None
+
+    def snooze_alarm(self):
+        if self.current_sound:
+            self.current_sound.stop()
+            self.current_sound = None
+        if self.alarm_popup:
+            self.alarm_popup.dismiss()
+            self.alarm_popup = None
+        if self.current_reminder:
+            ct = datetime.datetime.combine(datetime.date.today(), self.current_reminder['time'])
+            st = (ct + datetime.timedelta(minutes=5)).time()
+            self.current_reminder['time'] = st
+            self.current_reminder['played'] = False
+            self.current_reminder['snooze_count'] = self.current_reminder.get('snooze_count', 0) + 1
+            self.save_reminders()
+            self.refresh_reminder_list()
+            self.show_snackbar(f"Snoozed until {st.strftime('%I:%M %p')}")
+
+    def show_snackbar(self, message):
+        snack = BoxLayout(size_hint=(0.9, None), height=60, pos_hint={'center_x': 0.5, 'y': 0.05}, padding=[20, 15])
+        with snack.canvas.before:
+            Color(0.2, 0.3, 0.4, 0.95)
+            snack_bg = RoundedRectangle(pos=snack.pos, size=snack.size, radius=[15])
+        snack.bind(pos=lambda i, v: setattr(snack_bg, 'pos', i.pos))
+        snack.bind(size=lambda i, v: setattr(snack_bg, 'size', i.size))
+        
+        lbl = Label(text=message, color=(1, 1, 1, 1), font_size='15sp')
+        snack.add_widget(lbl)
+        
+        popup = Popup(content=snack, size_hint=(None, None), size=(1, 1), background='', separator_height=0, auto_dismiss=True)
+        popup.open()
+        Clock.schedule_once(lambda dt: popup.dismiss(), 2)
+
+    def on_pause(self):
+        return True
+
+    def on_resume(self):
+        pass
+
+    def on_stop(self):
+        if self.current_sound:
+            self.current_sound.stop()
+
+
+if __name__ == "__main__":
+    ReminderApp().run()
