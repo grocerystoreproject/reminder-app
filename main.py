@@ -126,7 +126,7 @@ class ReminderCard(ModernCard):
         elif len(selected_days) == 2 and selected_days == [5, 6]:
             days_text = "Weekends"
         else:
-            days_text = ", ".join([days_map[d] for d in selected_days])
+            days_text = ", ".join([days_map[d] for d in sorted(selected_days)])
         
         days_label = Label(
             text=f"📅 {days_text}",
@@ -187,6 +187,7 @@ class ReminderApp(App):
         self.editing_index = None
         self.alarm_popup = None
         self.snooze_minutes = 5
+        self.triggered_reminders = set()  # Track triggered reminders to avoid duplicates
         
         # Setup data directory
         try:
@@ -360,7 +361,7 @@ class ReminderApp(App):
         
         # Title label
         title_lbl = Label(
-            text="Reminder Details",
+            text="Edit Reminder" if reminder else "New Reminder",
             font_size='20sp',
             bold=True,
             size_hint=(1, None),
@@ -566,9 +567,9 @@ class ReminderApp(App):
                 'text': text,
                 'time': datetime.time(h, m),
                 'played': False,
-                'recurring': len(selected_days) > 1,
+                'recurring': len(selected_days) > 1 or len(selected_days) < 7,
                 'enabled': True,
-                'days': selected_days,
+                'days': sorted(selected_days),
                 'snooze_until': None
             }
 
@@ -596,6 +597,9 @@ class ReminderApp(App):
         if 0 <= index < len(self.reminders):
             self.reminders[index]['enabled'] = not self.reminders[index].get('enabled', True)
             self.reminders[index]['played'] = False  # Reset played status
+            # Remove from triggered set when toggling
+            reminder_key = f"{index}_{self.reminders[index]['time']}"
+            self.triggered_reminders.discard(reminder_key)
             self.save_reminders()
             self.refresh_reminder_list()
 
@@ -641,6 +645,10 @@ class ReminderApp(App):
             )
             
             def do_delete(instance):
+                # Remove from triggered set
+                reminder_key = f"{index}_{self.reminders[index]['time']}"
+                self.triggered_reminders.discard(reminder_key)
+                
                 del self.reminders[index]
                 self.save_reminders()
                 self.refresh_reminder_list()
@@ -703,32 +711,41 @@ class ReminderApp(App):
             current_time = now.time().replace(second=0, microsecond=0)
             current_day = now.weekday()
             
-            for r in self.reminders:
+            for idx, r in enumerate(self.reminders):
                 if not r.get('enabled'):
                     continue
+                
+                # Create unique key for this reminder
+                reminder_key = f"{idx}_{r['time']}"
                 
                 # Check snooze
                 if r.get('snooze_until'):
                     if now >= r['snooze_until']:
                         r['snooze_until'] = None
                         r['played'] = False
+                        self.triggered_reminders.discard(reminder_key)
                     else:
                         continue
                 
                 if current_day not in r.get('days', list(range(7))):
                     continue
                     
-                if r['time'] == current_time and not r['played']:
+                # Check if reminder should trigger and hasn't been triggered yet
+                if r['time'] == current_time and not r['played'] and reminder_key not in self.triggered_reminders:
                     self.show_alarm(r)
                     r['played'] = True
+                    self.triggered_reminders.add(reminder_key)
             
             # Reset at midnight
             if current_time.hour == 0 and current_time.minute == 0:
                 for r in self.reminders:
                     if not r.get('snooze_until'):
                         r['played'] = False
+                self.triggered_reminders.clear()
         except Exception as e:
             print(f"Check reminders error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def snooze_alarm(self, reminder):
         """Snooze the alarm for specified minutes"""
