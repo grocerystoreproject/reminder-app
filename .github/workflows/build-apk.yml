@@ -114,12 +114,13 @@ jobs:
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip
           
-          # Create proper directory structure (cmdline-tools/latest)
-          mkdir -p cmdline-tools
-          mv cmdline-tools latest_temp
-          mv latest_temp cmdline-tools/latest
+          # The zip extracts to a folder named 'cmdline-tools'
+          # We need to move it to cmdline-tools/latest
+          mkdir -p cmdline-tools-temp
+          mv cmdline-tools cmdline-tools-temp/latest
+          mv cmdline-tools-temp cmdline-tools
           
-          # Set up PATH for sdkmanager
+          # Set up environment variables
           export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           
@@ -136,6 +137,9 @@ jobs:
           mkdir -p tools/bin
           ln -sf ../../cmdline-tools/latest/bin/sdkmanager tools/bin/sdkmanager
           ln -sf ../../cmdline-tools/latest/bin/avdmanager tools/bin/avdmanager
+          
+          echo "Android SDK setup complete"
+          ls -la cmdline-tools/
 
       - name: Build APK with Buildozer
         id: build
