@@ -112,7 +112,7 @@ android.apptheme = "@android:style/Theme.NoTitleBar"
 #android.add_resources =
 
 # (list) Gradle dependencies to add
-#android.gradle_dependencies =
+android.gradle_dependencies = com.google.android.material:material:1.6.1
 
 # (bool) Enable AndroidX support
 android.enable_androidx = True
@@ -120,7 +120,7 @@ android.enable_androidx = True
 # (list) add java compile options
 # this can for example be necessary when importing certain java libraries using the 'android.gradle_dependencies' option
 # see https://developer.android.com/studio/write/java8-support for further information
-# android.add_compile_options = "sourceCompatibility = 1.8", "targetCompatibility = 1.8"
+android.add_compile_options = "sourceCompatibility = JavaVersion.VERSION_17", "targetCompatibility = JavaVersion.VERSION_17"
 
 # (list) Gradle repositories to add {can be necessary for some android.gradle_dependencies}
 # please enclose in double quotes 
