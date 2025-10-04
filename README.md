@@ -1,133 +1,149 @@
-# reminder-app
-# ⏰ My Reminders - Modern Reminder App
+# ⏰ My Reminders - Professional Reminder App
 
-A beautiful, peaceful, and feature-rich reminder application built with Kivy for Android.
+A feature-rich, beautifully designed reminder application built with Kivy for Android. Organize your life with categories, priorities, custom sounds, and smart scheduling.
 
-## ✨ Features
+## ✨ Enhanced Features
 
-### Core Functionality
-- 📝 **Create Custom Reminders** - Set reminders with custom text and times
-- 🔔 **Smart Notifications** - Get alerted with vibrations and on-screen popups
-- 📅 **Flexible Scheduling** - Choose specific days or repeat patterns (daily, weekdays, weekends)
-- 😴 **Snooze Function** - Snooze reminders for 5-30 minutes
-- ✅ **Toggle On/Off** - Easily enable or disable reminders without deleting
-- ✏️ **Edit Reminders** - Update existing reminders anytime
-- 🗑️ **Delete with Confirmation** - Safe deletion with confirmation dialog
+### 🎯 Core Functionality
+- **📝 Smart Reminders** - Create reminders with rich details and notes
+- **📂 Categories** - Organize reminders by Work, Personal, Health, Shopping, or Other
+- **⚠️ Priority Levels** - Set High, Medium, or Low priority for each reminder
+- **🔔 Custom Notifications** - Choose system sounds, custom ringtones, or vibrate only
+- **📅 Flexible Scheduling** - Repeat on specific days, weekdays, weekends, or daily
+- **😴 Smart Snooze** - Snooze reminders for 5-30 minutes
+- **✅ Quick Toggle** - Enable or disable reminders without deletion
+- **✏️ Easy Editing** - Update any reminder detail anytime
+- **🗑️ Safe Deletion** - Delete with confirmation dialog
 
-### User Experience
-- 🎨 **Modern, Peaceful UI** - Clean design with rounded cards and calming colors
-- 🌈 **Visual Status Indicators** - Color-coded cards show active/inactive status
-- 📊 **Statistics Dashboard** - View total, active, and inactive reminders at a glance
-- ⏱️ **Live Clock** - Always see the current time and date
-- 📱 **Portrait Optimized** - Designed specifically for mobile use
-- 💾 **Auto-Save** - All changes are automatically saved
+### 🎨 User Experience
+- **Modern Material Design** - Clean, colorful interface with accent colors
+- **Category Color Coding** - Visual distinction for different reminder types
+- **📊 Live Statistics** - View total, active, and today's reminders at a glance
+- **🔍 Smart Filtering** - Filter reminders by category
+- **📑 Multiple Sorting** - Sort by time, category, or priority
+- **⏱️ Live Clock** - Always see current time and date
+- **📱 Portrait Optimized** - Perfect for one-handed mobile use
+- **💾 Auto-Save** - Changes saved automatically
 
-### Smart Features
-- 🔄 **Recurring Reminders** - Set reminders for multiple days
-- 🎯 **Quick Day Selection** - Presets for weekdays, weekends, or all days
-- 🌙 **Midnight Reset** - Reminders automatically reset for the next day
-- 💾 **Persistent Storage** - Your reminders are saved between app sessions
+### 🚀 Smart Features
+- **🔄 Recurring Reminders** - Set for multiple days with visual day picker
+- **🎯 Quick Day Presets** - One-tap weekdays, weekends, or all days
+- **📝 Optional Notes** - Add detailed notes to any reminder
+- **🌙 Midnight Reset** - Reminders automatically reset for the next day
+- **💾 Persistent Storage** - All data saved between sessions
+- **🔔 Background Service** - Works even when app is closed
+- **📱 Priority Notifications** - High priority reminders get extra attention
+
+## 📱 New UI Components
+
+### Category System
+- **Work** 🔶 - Orange accent for professional tasks
+- **Personal** 🔵 - Blue accent for personal reminders
+- **Health** 🟢 - Green accent for health & fitness
+- **Shopping** 🟣 - Purple accent for shopping lists
+- **Other** ⚫ - Gray accent for miscellaneous
+
+### Priority Indicators
+- **High Priority** - Red badge with "!!!" indicator and enhanced notifications
+- **Medium Priority** - Orange badge with standard notifications
+- **Low Priority** - Blue badge with gentle notifications
+
+### Enhanced Stats Dashboard
+- 📋 **Total Reminders** - Count of all reminders
+- ✅ **Active Reminders** - Currently enabled reminders
+- 📅 **Today's Count** - Reminders scheduled for today
 
 ## 📸 Screenshots
 
-*(Add your screenshots here)*
+*(Coming soon - Add your screenshots here)*
 
 ## 🚀 Installation
 
 ### Option 1: Download APK (Recommended)
 1. Go to the [Releases](../../releases) page
 2. Download the latest `.apk` file
-3. Install on your Android device
-4. Grant necessary permissions when prompted
+3. Install on your Android device (enable "Install from Unknown Sources")
+4. Grant all requested permissions
 
 ### Option 2: Build from Source
 
 #### Prerequisites
-- Python 3.10 or 3.11
+- Python 3.11
 - Android SDK and NDK
-- Buildozer
+- Buildozer 1.5.0
 
 #### Build Steps
 
-1. **Clone the repository**
 ```bash
+# Clone repository
 git clone https://github.com/yourusername/reminder-app.git
 cd reminder-app
-```
 
-2. **Install dependencies**
-```bash
+# Install dependencies
 pip install buildozer cython==0.29.36
-```
 
-3. **Create required directories**
-```bash
+# Create directories
 mkdir -p assets/ringtones
-```
+mkdir -p service
 
-4. **Build the APK**
-```bash
+# Build APK
 buildozer android debug
-```
 
-5. **Find your APK**
-```bash
-# The APK will be in the bin/ directory
+# Find APK
 ls bin/*.apk
 ```
 
-## 🔧 Development Setup
-
-### Local Testing (Desktop)
-
-```bash
-# Install Kivy
-pip install kivy
-
-# Run the app
-python main.py
-```
-
-### Testing on Android
-
-```bash
-# Connect your Android device via USB with USB debugging enabled
-buildozer android debug deploy run logcat
-```
-
-## 📝 Usage Guide
+## 📖 Usage Guide
 
 ### Creating a Reminder
 
-1. Tap **"+ Add New Reminder"**
-2. Enter your reminder text
-3. Set the time using the hour/minute spinners
-4. Select AM or PM
-5. Choose which days to repeat
-   - Use quick buttons: "Weekdays", "Weekend", or "Every day"
-   - Or manually select specific days
-6. Tap **"💾 Save Reminder"**
+1. **Tap "➕ Add New Reminder"**
+2. **Enter reminder details:**
+   - Reminder message (required)
+   - Category (Work, Personal, Health, Shopping, Other)
+   - Priority (High, Medium, Low)
+   - Time (using hour/minute spinners)
+   - Ringtone (system, custom, or vibrate only)
+   - Days to repeat
+   - Optional note for additional details
+3. **Use quick presets:**
+   - "Weekdays" - Monday through Friday
+   - "Weekend" - Saturday and Sunday
+   - "Every Day" - All seven days
+4. **Tap "💾 Save Reminder"**
 
 ### Managing Reminders
 
-- **Turn On/Off**: Tap the "Turn On"/"Turn Off" button on any reminder card
-- **Edit**: Tap the "✎ Edit" button to modify a reminder
-- **Delete**: Tap the "🗑" button and confirm deletion
-- **Snooze**: When an alarm triggers, adjust the slider and tap "😴 Snooze"
+- **Toggle On/Off**: Tap the ON/OFF button
+- **Edit**: Tap "✏️ Edit" to modify any detail
+- **Delete**: Tap "🗑️" and confirm deletion
+- **Filter**: Use category dropdown to filter by type
+- **Sort**: Choose Time, Category, or Priority sorting
+- **Snooze**: When alarm triggers, adjust slider (5-30 min) and tap "😴 Snooze"
 
 ### Understanding the UI
 
-- **White cards** = Active reminders
-- **Gray cards** = Disabled reminders
-- **Green indicator** = Reminder is active (✓ Active)
-- **Gray indicator** = Reminder is off (○ Off)
+#### Card Colors
+- **White with colored accent** = Active reminder
+- **Gray with muted accent** = Disabled reminder
+
+#### Category Colors
+- **Orange accent** = Work reminders
+- **Blue accent** = Personal reminders
+- **Green accent** = Health reminders
+- **Purple accent** = Shopping reminders
+- **Gray accent** = Other/disabled reminders
+
+#### Priority Indicators
+- **"!!!" badge** = High priority (red)
+- **No badge** = Medium/Low priority
 
 ## 🛠️ Technical Details
 
 ### Built With
 - **Python 3.11** - Programming language
 - **Kivy 2.3.0** - Cross-platform UI framework
-- **Buildozer** - Android packaging tool
+- **Buildozer 1.5.0** - Android packaging tool
 - **python-for-android** - Android backend
 
 ### Permissions Required
@@ -135,77 +151,148 @@ buildozer android debug deploy run logcat
 - `WAKE_LOCK` - To wake device for alarms
 - `SCHEDULE_EXACT_ALARM` - For precise timing
 - `POST_NOTIFICATIONS` - For notification support
+- `FOREGROUND_SERVICE` - Background service
+- `READ_MEDIA_AUDIO` - For custom ringtones
 
 ### File Structure
 ```
 reminder-app/
-├── main.py              # Main application code
-├── buildozer.spec       # Build configuration
+├── main.py              # Main app with enhanced UI
+├── service/
+│   └── main.py         # Enhanced background service
+├── buildozer.spec      # Build configuration
 ├── .github/
 │   └── workflows/
 │       └── build-apk.yml # CI/CD workflow
 ├── assets/
-│   └── ringtones/       # Custom ringtones (optional)
-└── README.md            # This file
+│   └── ringtones/      # Custom ringtones (optional)
+└── README.md           # This file
+```
+
+### Data Structure
+Each reminder includes:
+```json
+{
+  "text": "Reminder message",
+  "time": "14:30",
+  "category": "Work",
+  "priority": "High",
+  "enabled": true,
+  "days": [0, 1, 2, 3, 4],
+  "ringtone": "Default System Sound",
+  "ringtone_uri": null,
+  "note": "Optional additional details"
+}
 ```
 
 ## 🐛 Troubleshooting
 
 ### App won't install
 - Enable "Install from Unknown Sources" in Android settings
-- Check if you have sufficient storage space
+- Check storage space (need ~60MB free)
+- Uninstall old version first if updating
 
 ### Reminders not triggering
-- Ensure the app has all required permissions
-- Check that the reminder is enabled (green indicator)
-- Verify battery optimization is disabled for the app
+- Ensure app has all permissions
+- Check reminder is enabled (ON state)
+- Verify correct days are selected
+- Disable battery optimization for the app
+- Check "Do Not Disturb" settings
+
+### Custom ringtones not playing
+- Grant audio file access permission
+- Verify audio file format (MP3, OGG, WAV supported)
+- Try using system default sound first
 
 ### Build fails
-- Ensure you have Python 3.10 or 3.11
+- Use Python 3.11 (not 3.12+)
 - Clear buildozer cache: `buildozer android clean`
-- Check that all system dependencies are installed
+- Update buildozer: `pip install --upgrade buildozer`
+- Check Java version (JDK 17 required)
+
+## 🆕 What's New
+
+### Version 2.3
+- ✅ Category system with 5 types
+- ✅ Priority levels (High, Medium, Low)
+- ✅ Optional notes for reminders
+- ✅ Enhanced filtering and sorting
+- ✅ Improved statistics dashboard
+- ✅ Better visual design with accent colors
+- ✅ Priority-based notifications
+- ✅ Category grouping in sorted view
 
 ## 🔮 Upcoming Features
 
-- [ ] Custom ringtones
-- [ ] Multiple alarms per day
-- [ ] Reminder categories
-- [ ] Dark mode
-- [ ] Widget support
-- [ ] Notification sound selection
-- [ ] Import/Export reminders
-- [ ] Cloud sync
+- [ ] Widgets for home screen
+- [ ] Dark mode support
+- [ ] Reminder templates
+- [ ] Location-based reminders
+- [ ] Voice input for reminders
+- [ ] Backup & restore to cloud
+- [ ] Multiple alarm sounds per reminder
+- [ ] Reminder history and completion tracking
+- [ ] Recurring patterns (e.g., every 2 weeks)
+- [ ] Sub-reminders/checklists
+- [ ] Share reminders with others
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how you can help:
+Contributions welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
 ## 📄 License
 
-This project is licensed under the SBGI Miraj third year students for mini project:- 1. Harshvardhan Chandanshive 2:- Nikita Bagate 3:- Shreya Dalwai
+This project is for educational purposes.
 
-## 👤 Author
+**Developed by SBGI Miraj Third Year Students:**
+1. Harshvardhan Chandanshive
+2. Nikita Bagate
+3. Shreya Dalwai
 
-Your Name - [harshvardhanchandanshive703@gmail.com]
+## 👤 Contact
+
+**Harshvardhan Chandanshive**  
+Email: harshvardhanchandanshive703@gmail.com
 
 ## 🙏 Acknowledgments
 
-- Kivy Team for the amazing framework
-- Contributors and testers
-- Icon and emoji providers
+- Kivy Team for the excellent framework
+- Material Design guidelines for UI inspiration
+- Android development community
+- All contributors and testers
 
-## 📞 Support
+## 💡 Tips for Best Experience
 
-If you encounter any issues or have suggestions:
-- Open an [issue](../../issues)
-- Star ⭐ the repository if you find it useful!
+1. **Use Categories** - Organize reminders by type for better management
+2. **Set Priorities** - Mark important reminders as High priority
+3. **Add Notes** - Include details that help you remember context
+4. **Quick Presets** - Use weekday/weekend buttons for faster setup
+5. **Custom Sounds** - Choose distinct sounds for different categories
+6. **Filter View** - Use category filter when you have many reminders
+7. **Today Count** - Check stats to see today's reminder load
+
+## 📊 Comparison with Similar Apps
+
+| Feature | My Reminders | Others |
+|---------|-------------|---------|
+| Categories | ✅ 5 types | Limited |
+| Priorities | ✅ 3 levels | Usually none |
+| Notes | ✅ Full text | Limited |
+| Custom Ringtones | ✅ | Often paid |
+| Filtering | ✅ | Basic |
+| Sorting | ✅ 3 ways | Limited |
+| Free & Open Source | ✅ | Rare |
+| No Ads | ✅ | Uncommon |
+| Offline | ✅ 100% | Varies |
 
 ---
 
-Made with ❤️ and Python
+**Made with ❤️ and Python**
+
+*Remember everything that matters!* ⏰📝✨
