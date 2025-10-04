@@ -4,9 +4,8 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -71,9 +70,8 @@ jobs:
       - name: Create Required Directories
         run: |
           mkdir -p assets/ringtones
+          mkdir -p service
           mkdir -p .buildozer
-          echo "Directory structure created"
-          ls -la
 
       - name: Cache Buildozer Global
         uses: actions/cache@v4
@@ -94,95 +92,39 @@ jobs:
             ${{ runner.os }}-buildozer-local-${{ hashFiles('buildozer.spec') }}-
             ${{ runner.os }}-buildozer-local-
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
       - name: Setup Android SDK
         run: |
-          # Create SDK directory structure
           mkdir -p ~/.buildozer/android/platform/android-sdk
           cd ~/.buildozer/android/platform/android-sdk
           
-          # Download and setup Android SDK command-line tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip
           
-          # The zip extracts to a folder named 'cmdline-tools'
-          # We need to move it to cmdline-tools/latest
           mkdir -p cmdline-tools-temp
           mv cmdline-tools cmdline-tools-temp/latest
           mv cmdline-tools-temp cmdline-tools
           
-          # Set up environment variables
           export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
           export ANDROID_HOME="$ANDROID_SDK_ROOT"
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           
-          # Accept licenses
           mkdir -p licenses
           echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > licenses/android-sdk-license
           echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> licenses/android-sdk-license
-          echo "e9acab5b5fbb560a72cfaecce8946896ff6aab9d" > licenses/android-sdk-preview-license
-          echo "84831b9409646a918e30573bab4c9c91346d8abd" > licenses/android-sdk-preview-license
           
-          # Install SDK platform tools and build tools
-          echo "Installing Android SDK components..."
           yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
           sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" || true
           sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platforms;android-33" || true
           sdkmanager --sdk_root=$ANDROID_SDK_ROOT "build-tools;33.0.0" || true
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "build-tools;30.0.3" || true
           
-          # Create tools directory for buildozer compatibility
           mkdir -p tools/bin
           ln -sf ../../cmdline-tools/latest/bin/sdkmanager tools/bin/sdkmanager
-          ln -sf ../../cmdline-tools/latest/bin/avdmanager tools/bin/avdmanager
-          
-          echo "Android SDK setup complete"
-          echo "Directory structure:"
-          ls -la cmdline-tools/
-          echo "Installed packages:"
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT --list_installed || true
-
-      - name: Verify SDK Installation
-        run: |
-          echo "Verifying Android SDK installation..."
-          export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          
-          echo "SDK Root: $ANDROID_SDK_ROOT"
-          echo "Contents:"
-          ls -la "$ANDROID_SDK_ROOT" || echo "SDK directory not found"
-          
-          echo -e "\nPlatform tools:"
-          ls -la "$ANDROID_SDK_ROOT/platform-tools/" 2>/dev/null || echo "Platform tools not found"
-          
-          echo -e "\nBuild tools:"
-          ls -la "$ANDROID_SDK_ROOT/build-tools/" 2>/dev/null || echo "Build tools not found"
-          
-          echo -e "\nPlatforms:"
-          ls -la "$ANDROID_SDK_ROOT/platforms/" 2>/dev/null || echo "Platforms not found"
-          
-          # Check for adb
-          if [ -f "$ANDROID_SDK_ROOT/platform-tools/adb" ]; then
-            echo -e "\n✓ ADB found"
-          else
-            echo -e "\n✗ ADB not found"
-          fi
 
       - name: Setup Build Environment
         run: |
-          # Set environment variables for the session
           echo "USE_CCACHE=1" >> $GITHUB_ENV
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-          echo "NDK_CCACHE=$(which ccache)" >> $GITHUB_ENV
-          echo "GRADLE_OPTS=-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.warning.mode=all" >> $GITHUB_ENV
+          echo "GRADLE_OPTS=-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.daemon=false" >> $GITHUB_ENV
           echo "ANDROIDSDK=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
           echo "ANDROIDNDK=$HOME/.buildozer/android/platform/android-ndk-r25b" >> $GITHUB_ENV
           echo "ANDROIDAPI=33" >> $GITHUB_ENV
@@ -190,29 +132,21 @@ jobs:
           echo "ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
           echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
 
-      - name: Clean Previous Build (if manifest changed)
+      - name: Clean Previous Build
         run: |
-          # Check if there's a cached dist and clean it to force manifest regeneration
           if [ -d ".buildozer/android/platform/build-arm64-v8a/dists/myreminders" ]; then
-            echo "Found existing distribution, cleaning to force regeneration..."
+            echo "Cleaning existing distribution..."
             rm -rf .buildozer/android/platform/build-arm64-v8a/dists/myreminders
-            echo "Cleaned successfully"
-          else
-            echo "No existing distribution found, proceeding with fresh build"
           fi
 
       - name: Build APK with Buildozer
         id: build
         continue-on-error: true
         run: |
-          echo "==============================================="
           echo "Starting Buildozer Build"
-          echo "==============================================="
           echo "JAVA_HOME: $JAVA_HOME"
           echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
-          echo "ANDROIDSDK: $ANDROIDSDK"
           
-          # Run buildozer with verbose output
           buildozer -v android debug 2>&1 | tee build_log.txt
           
           BUILD_EXIT_CODE=${PIPESTATUS[0]}
@@ -222,21 +156,11 @@ jobs:
             echo "build_status=success" >> $GITHUB_OUTPUT
           else
             echo "build_status=failed" >> $GITHUB_OUTPUT
-            
-            # Extract Gradle errors if they exist
-            echo "==============================================="
-            echo "Searching for Gradle errors..."
-            echo "==============================================="
-            if [ -f build_log.txt ]; then
-              grep -A 20 "BUILD FAILED" build_log.txt || true
-              grep -A 10 "FAILURE:" build_log.txt || true
-              grep -A 5 "error:" build_log.txt || true
-            fi
           fi
           
           exit $BUILD_EXIT_CODE
 
-      - name: Upload Build Log (Always)
+      - name: Upload Build Log
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -244,111 +168,35 @@ jobs:
           path: build_log.txt
           retention-days: 30
 
-      - name: Display Gradle Errors (if any)
-        if: failure()
-        run: |
-          echo "==============================================="
-          echo "Displaying detailed error information..."
-          echo "==============================================="
-          
-          # Check for Gradle build directory
-          GRADLE_DIR=".buildozer/android/platform/build-arm64-v8a/dists/myreminders"
-          
-          if [ -d "$GRADLE_DIR" ]; then
-            echo "Found Gradle project directory"
-            
-            # Look for Gradle logs
-            if [ -f "$GRADLE_DIR/build/outputs/logs/gradle-build.log" ]; then
-              echo "=== Gradle Build Log ==="
-              tail -100 "$GRADLE_DIR/build/outputs/logs/gradle-build.log"
-            fi
-            
-            # Check for build errors
-            find "$GRADLE_DIR" -name "*.log" -type f 2>/dev/null | while read logfile; do
-              echo "=== Log file: $logfile ==="
-              tail -50 "$logfile"
-            done
-          fi
-          
-          # Display last 200 lines of build log with errors
-          if [ -f build_log.txt ]; then
-            echo "=== Last errors from build log ==="
-            tail -200 build_log.txt | grep -A 5 -i "error\|failed\|exception" || tail -200 build_log.txt
-          fi
-
-      - name: List All Build Files
-        if: always()
-        run: |
-          echo "==============================================="
-          echo "Searching for build outputs..."
-          echo "==============================================="
-          
-          echo "Contents of current directory:"
-          ls -lah
-          
-          echo -e "\nContents of bin directory (if exists):"
-          ls -lah bin/ 2>/dev/null || echo "No bin directory found"
-          
-          echo -e "\nSearching for all APK files:"
-          find . -name "*.apk" -type f -exec ls -lh {} \; 2>/dev/null || echo "No APK files found"
-          
-          echo -e "\nSearching in .buildozer directory:"
-          find .buildozer -name "*.apk" -type f -exec ls -lh {} \; 2>/dev/null || echo "No APK in .buildozer"
-          
-          echo -e "\nBuildozer directory structure:"
-          ls -lah .buildozer/ 2>/dev/null || echo "No .buildozer directory"
-
-      - name: Copy APK to bin Directory
-        if: always()
+      - name: Find and Copy APK
+        if: steps.build.outputs.build_status == 'success'
         run: |
           mkdir -p bin
           
-          # Search for APK in various locations
-          APK_FOUND=false
+          echo "Searching for APK..."
+          APK_PATH=$(find .buildozer/android/platform/build-arm64-v8a/dists/myreminders -name "*.apk" -type f | head -n 1)
           
-          # Check common buildozer locations
-          if [ -d ".buildozer/android/platform/build-arm64-v8a/dists/myreminders/build/outputs/apk/debug" ]; then
-            cp .buildozer/android/platform/build-arm64-v8a/dists/myreminders/build/outputs/apk/debug/*.apk bin/ 2>/dev/null && APK_FOUND=true
-          fi
-          
-          if [ -d ".buildozer/android/platform/build-armeabi-v7a/dists/myreminders/build/outputs/apk/debug" ]; then
-            cp .buildozer/android/platform/build-armeabi-v7a/dists/myreminders/build/outputs/apk/debug/*.apk bin/ 2>/dev/null && APK_FOUND=true
-          fi
-          
-          # Alternative location
-          find .buildozer -name "*.apk" -exec cp {} bin/ \; 2>/dev/null && APK_FOUND=true
-          
-          if [ "$APK_FOUND" = true ]; then
-            echo "APK files copied to bin directory"
-            ls -lah bin/
+          if [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ]; then
+            echo "Found APK: $APK_PATH"
+            
+            VERSION=$(grep "^version" buildozer.spec | cut -d'=' -f2 | tr -d ' ')
+            DATE=$(date +%Y%m%d)
+            NEW_NAME="MyReminders-v${VERSION}-${DATE}.apk"
+            
+            cp "$APK_PATH" "bin/$NEW_NAME"
+            echo "Copied to bin/$NEW_NAME"
+            ls -lh bin/
           else
-            echo "No APK files found to copy"
-            # Create a dummy file to prevent artifact upload failure
-            echo "Build failed - no APK generated" > bin/BUILD_FAILED.txt
+            echo "ERROR: No APK found!"
+            exit 1
           fi
-
-      - name: Rename APK with Version and Date
-        if: success() && steps.build.outputs.build_status == 'success'
-        run: |
-          cd bin
-          for apk in *.apk; do
-            if [ -f "$apk" ]; then
-              VERSION=$(grep "^version" ../buildozer.spec | cut -d'=' -f2 | tr -d ' ')
-              DATE=$(date +%Y%m%d)
-              NEW_NAME="MyReminders-v${VERSION}-${DATE}-${apk}"
-              mv "$apk" "$NEW_NAME"
-              echo "Renamed to: $NEW_NAME"
-            fi
-          done
-          ls -lah
 
       - name: Upload APK Artifact
-        if: always()
+        if: steps.build.outputs.build_status == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: MyReminders-APK
-          path: bin/*
-          if-no-files-found: warn
+          path: bin/*.apk
           retention-days: 90
 
       - name: Generate Build Summary
@@ -360,30 +208,24 @@ jobs:
           if [ "${{ steps.build.outputs.build_status }}" == "success" ]; then
             echo "✅ **Build Status:** SUCCESS" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## Generated APK Files" >> $GITHUB_STEP_SUMMARY
-            ls -lh bin/*.apk 2>/dev/null | awk '{print "- " $9 " (" $5 ")"}' >> $GITHUB_STEP_SUMMARY || echo "- No APK files found" >> $GITHUB_STEP_SUMMARY
+            echo "## Generated APK" >> $GITHUB_STEP_SUMMARY
+            ls -lh bin/*.apk 2>/dev/null | awk '{print "- " $9 " (" $5 ")"}' >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Build Status:** FAILED" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## Error Information" >> $GITHUB_STEP_SUMMARY
             echo "Check the build log artifact for detailed error messages." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Common Issues:" >> $GITHUB_STEP_SUMMARY
-            echo "- Missing dependencies" >> $GITHUB_STEP_SUMMARY
-            echo "- NDK/SDK version mismatch" >> $GITHUB_STEP_SUMMARY
-            echo "- Gradle build failures" >> $GITHUB_STEP_SUMMARY
-            echo "- Python-for-android compilation errors" >> $GITHUB_STEP_SUMMARY
           fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Build Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- Python Version: 3.11" >> $GITHUB_STEP_SUMMARY
-          echo "- Java Version: 17" >> $GITHUB_STEP_SUMMARY
-          echo "- Buildozer Version: 1.5.0" >> $GITHUB_STEP_SUMMARY
+          echo "- Python: 3.11" >> $GITHUB_STEP_SUMMARY
+          echo "- Java: 17" >> $GITHUB_STEP_SUMMARY
+          echo "- Buildozer: 1.5.0" >> $GITHUB_STEP_SUMMARY
           echo "- Target API: 33" >> $GITHUB_STEP_SUMMARY
           echo "- Min API: 21" >> $GITHUB_STEP_SUMMARY
+          echo "- Architecture: arm64-v8a" >> $GITHUB_STEP_SUMMARY
 
-      - name: Create GitHub Release (on tag)
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') && steps.build.outputs.build_status == 'success'
         uses: softprops/action-gh-release@v1
         with:
@@ -394,24 +236,21 @@ jobs:
             **Version:** ${{ github.ref_name }}
             **Build Date:** ${{ github.event.head_commit.timestamp }}
             
-            ### Installation Instructions
-            1. Download the APK file
+            ### Features
+            - ⏰ Custom reminders with alarm sound
+            - 🔔 Choose system sound or custom ringtones
+            - 📅 Repeat on specific days
+            - 😴 Snooze functionality
+            - 🔕 Works even when app is closed
+            
+            ### Installation
+            1. Download the APK file below
             2. Enable "Install from Unknown Sources" in Android settings
             3. Install the APK
-            4. Grant necessary permissions
-            
-            ### What's New
-            See CHANGELOG.md for details
+            4. Grant all requested permissions
             
             ### Requirements
             - Android 5.0 (API 21) or higher
             - ~50MB storage space
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Post-Build Cleanup
-        if: always()
-        run: |
-          # Clean up large cache files to prevent storage issues
-          du -sh .buildozer 2>/dev/null || echo "No .buildozer directory"
-          du -sh ~/.buildozer 2>/dev/null || echo "No ~/.buildozer directory"
