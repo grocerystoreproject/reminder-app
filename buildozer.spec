@@ -19,7 +19,7 @@ source.include_exts = py,png,jpg,kv,atlas,json,mp3,wav,ogg,m4a
 source.include_patterns = assets/*,assets/ringtones/*
 
 # (str) Application versioning (method 1)
-version = 2.1
+version = 2.2
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
@@ -43,7 +43,7 @@ orientation = portrait
 fullscreen = 0
 
 # (list) Permissions
-android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
+android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO
 
 # (list) features (adds uses-feature -tags to manifest)
 #android.features = android.hardware.usb.host
@@ -67,7 +67,7 @@ android.accept_sdk_license = True
 #android.entrypoint = org.kivy.android.PythonActivity
 
 # (str) Full name including package path of the Java class that implements Python Service
-# android.service_class_name = org.kivy.android.PythonService
+android.service_class_name = org.kivy.android.PythonService
 
 # (str) Android app theme, default is ok for Kivy-based app
 android.apptheme = @android:style/Theme.NoTitleBar
