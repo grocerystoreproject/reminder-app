@@ -122,6 +122,7 @@ jobs:
           
           # Set up environment variables
           export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
           
           # Accept licenses
@@ -129,9 +130,15 @@ jobs:
           echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > licenses/android-sdk-license
           echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> licenses/android-sdk-license
           echo "e9acab5b5fbb560a72cfaecce8946896ff6aab9d" > licenses/android-sdk-preview-license
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > licenses/android-sdk-preview-license
           
           # Install SDK platform tools and build tools
-          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.0" || true
+          echo "Installing Android SDK components..."
+          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" || true
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platforms;android-33" || true
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "build-tools;33.0.0" || true
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "build-tools;30.0.3" || true
           
           # Create tools directory for buildozer compatibility
           mkdir -p tools/bin
@@ -139,24 +146,60 @@ jobs:
           ln -sf ../../cmdline-tools/latest/bin/avdmanager tools/bin/avdmanager
           
           echo "Android SDK setup complete"
+          echo "Directory structure:"
           ls -la cmdline-tools/
+          echo "Installed packages:"
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT --list_installed || true
+
+      - name: Verify SDK Installation
+        run: |
+          echo "Verifying Android SDK installation..."
+          export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          
+          echo "SDK Root: $ANDROID_SDK_ROOT"
+          echo "Contents:"
+          ls -la "$ANDROID_SDK_ROOT" || echo "SDK directory not found"
+          
+          echo -e "\nPlatform tools:"
+          ls -la "$ANDROID_SDK_ROOT/platform-tools/" 2>/dev/null || echo "Platform tools not found"
+          
+          echo -e "\nBuild tools:"
+          ls -la "$ANDROID_SDK_ROOT/build-tools/" 2>/dev/null || echo "Build tools not found"
+          
+          echo -e "\nPlatforms:"
+          ls -la "$ANDROID_SDK_ROOT/platforms/" 2>/dev/null || echo "Platforms not found"
+          
+          # Check for adb
+          if [ -f "$ANDROID_SDK_ROOT/platform-tools/adb" ]; then
+            echo -e "\n✓ ADB found"
+          else
+            echo -e "\n✗ ADB not found"
+          fi
+
+      - name: Setup Build Environment
+        run: |
+          # Set environment variables for the session
+          echo "USE_CCACHE=1" >> $GITHUB_ENV
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "NDK_CCACHE=$(which ccache)" >> $GITHUB_ENV
+          echo "GRADLE_OPTS=-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.warning.mode=all" >> $GITHUB_ENV
+          echo "ANDROIDSDK=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+          echo "ANDROIDNDK=$HOME/.buildozer/android/platform/android-ndk-r25b" >> $GITHUB_ENV
+          echo "ANDROIDAPI=33" >> $GITHUB_ENV
+          echo "ANDROIDMINAPI=21" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
 
       - name: Build APK with Buildozer
         id: build
         continue-on-error: true
         run: |
-          export USE_CCACHE=1
-          export CCACHE_DIR=$HOME/.ccache
-          export NDK_CCACHE=$(which ccache)
-          export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.daemon=false -Dorg.gradle.parallel=false"
-          export ANDROIDSDK="$HOME/.buildozer/android/platform/android-sdk"
-          export ANDROIDNDK="$HOME/.buildozer/android/platform/android-ndk-r25b"
-          export ANDROIDAPI="33"
-          export ANDROIDMINAPI="21"
-          
           echo "==============================================="
           echo "Starting Buildozer Build"
           echo "==============================================="
+          echo "JAVA_HOME: $JAVA_HOME"
+          echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+          echo "ANDROIDSDK: $ANDROIDSDK"
           
           # Run buildozer with verbose output
           buildozer -v android debug 2>&1 | tee build_log.txt
@@ -168,6 +211,16 @@ jobs:
             echo "build_status=success" >> $GITHUB_OUTPUT
           else
             echo "build_status=failed" >> $GITHUB_OUTPUT
+            
+            # Extract Gradle errors if they exist
+            echo "==============================================="
+            echo "Searching for Gradle errors..."
+            echo "==============================================="
+            if [ -f build_log.txt ]; then
+              grep -A 20 "BUILD FAILED" build_log.txt || true
+              grep -A 10 "FAILURE:" build_log.txt || true
+              grep -A 5 "error:" build_log.txt || true
+            fi
           fi
           
           exit $BUILD_EXIT_CODE
@@ -179,6 +232,38 @@ jobs:
           name: build-log
           path: build_log.txt
           retention-days: 30
+
+      - name: Display Gradle Errors (if any)
+        if: failure()
+        run: |
+          echo "==============================================="
+          echo "Displaying detailed error information..."
+          echo "==============================================="
+          
+          # Check for Gradle build directory
+          GRADLE_DIR=".buildozer/android/platform/build-arm64-v8a/dists/myreminders"
+          
+          if [ -d "$GRADLE_DIR" ]; then
+            echo "Found Gradle project directory"
+            
+            # Look for Gradle logs
+            if [ -f "$GRADLE_DIR/build/outputs/logs/gradle-build.log" ]; then
+              echo "=== Gradle Build Log ==="
+              tail -100 "$GRADLE_DIR/build/outputs/logs/gradle-build.log"
+            fi
+            
+            # Check for build errors
+            find "$GRADLE_DIR" -name "*.log" -type f 2>/dev/null | while read logfile; do
+              echo "=== Log file: $logfile ==="
+              tail -50 "$logfile"
+            done
+          fi
+          
+          # Display last 200 lines of build log with errors
+          if [ -f build_log.txt ]; then
+            echo "=== Last errors from build log ==="
+            tail -200 build_log.txt | grep -A 5 -i "error\|failed\|exception" || tail -200 build_log.txt
+          fi
 
       - name: List All Build Files
         if: always()
