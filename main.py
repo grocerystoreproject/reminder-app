@@ -17,7 +17,6 @@ from kivy.utils import platform
 from kivy.graphics import Color, RoundedRectangle, Line
 from kivy.metrics import dp
 from kivy.core.window import Window
-from kivy.core.audio import SoundLoader
 
 print("App starting...")
 
@@ -60,6 +59,8 @@ def create_notification_channel():
             Context = autoclass('android.content.Context')
             NotificationManager = autoclass('android.app.NotificationManager')
             NotificationChannel = autoclass('android.app.NotificationChannel')
+            AudioAttributes = autoclass('android.media.AudioAttributes')
+            Uri = autoclass('android.net.Uri')
             
             activity = PythonActivity.mActivity
             notification_service = activity.getSystemService(Context.NOTIFICATION_SERVICE)
@@ -73,10 +74,39 @@ def create_notification_channel():
             channel.enableVibration(True)
             channel.setVibrationPattern([0, 500, 200, 500])
             
+            # Set default notification sound
+            audio_attributes = AudioAttributes.Builder() \
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION) \
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION) \
+                .build()
+            
+            default_sound_uri = Uri.parse("android.resource://" + activity.getPackageName() + "/")
+            channel.setSound(default_sound_uri, audio_attributes)
+            
             notification_service.createNotificationChannel(channel)
             print("Notification channel created")
         except Exception as e:
             print(f"Channel creation error: {e}")
+
+
+def start_background_service():
+    """Start the background service for reminders"""
+    if platform == 'android':
+        try:
+            from jnius import autoclass
+            PythonService = autoclass('org.kivy.android.PythonService')
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Intent = autoclass('android.content.Intent')
+            
+            activity = PythonActivity.mActivity
+            service_intent = Intent(activity, PythonService)
+            service_intent.putExtra("serviceTitle", "My Reminders")
+            service_intent.putExtra("serviceDescription", "Reminder service is running")
+            
+            activity.startService(service_intent)
+            print("Background service started")
+        except Exception as e:
+            print(f"Service start error: {e}")
 
 
 class ModernCard(BoxLayout):
@@ -285,7 +315,7 @@ class ReminderApp(App):
         self.reminders = []
         self.editing_index = None
         self.alarm_popup = None
-        self.alarm_sound = None
+        self.media_player = None
         self.snooze_minutes = 10
         self.triggered_reminders = set()
         self.last_check_minute = -1
@@ -307,6 +337,9 @@ class ReminderApp(App):
         
         # Create notification channel
         create_notification_channel()
+        
+        # Start background service
+        start_background_service()
         
         # Load available ringtones
         self.load_ringtones()
@@ -420,7 +453,7 @@ class ReminderApp(App):
         return root
 
     def load_ringtones(self):
-        """Load available ringtones from assets folder and device"""
+        """Load available ringtones from assets folder"""
         self.ringtones = {}
         ringtone_dir = 'assets/ringtones'
         
@@ -436,43 +469,11 @@ class ReminderApp(App):
         except Exception as e:
             print(f"Error loading bundled ringtones: {e}")
         
-        # Add option to pick from device
-        self.ringtones['🎵 Pick from Device'] = 'PICK_FROM_DEVICE'
-        self.ringtones['🔇 Default (Vibrate Only)'] = None
+        # Add default system sound option
+        self.ringtones['🔔 Default System Sound'] = 'SYSTEM_DEFAULT'
+        self.ringtones['🔇 Vibrate Only'] = None
         
         print(f"Total ringtone options: {len(self.ringtones)}")
-
-    def pick_ringtone_from_device(self, callback):
-        """Allow user to pick a ringtone from their device"""
-        if platform == 'android':
-            try:
-                from jnius import autoclass, cast
-                from android import activity
-                
-                Intent = autoclass('android.content.Intent')
-                PythonActivity = autoclass('org.kivy.android.PythonActivity')
-                RingtoneManager = autoclass('android.media.RingtoneManager')
-                
-                intent = Intent(Intent.ACTION_PICK)
-                intent.setType("audio/*")
-                
-                def on_activity_result(request_code, result_code, intent):
-                    if result_code == -1 and intent:  # RESULT_OK
-                        uri = intent.getData()
-                        if uri:
-                            uri_string = uri.toString()
-                            print(f"Selected ringtone URI: {uri_string}")
-                            callback(uri_string)
-                
-                activity.bind(on_activity_result=on_activity_result)
-                PythonActivity.mActivity.startActivityForResult(intent, 1001)
-                
-            except Exception as e:
-                print(f"Error picking ringtone: {e}")
-                callback(None)
-        else:
-            print("Ringtone picker only available on Android")
-            callback(None)
 
     def update_time(self, dt):
         now = datetime.datetime.now()
@@ -495,7 +496,7 @@ class ReminderApp(App):
                             'enabled': item.get('enabled', True),
                             'days': item.get('days', list(range(7))),
                             'snooze_until': None,
-                            'ringtone': item.get('ringtone', '🔇 Default (Vibrate Only)')
+                            'ringtone': item.get('ringtone', '🔔 Default System Sound')
                         })
                 print(f"Loaded {len(self.reminders)} reminders")
             else:
@@ -513,7 +514,7 @@ class ReminderApp(App):
                 'recurring': r.get('recurring', True),
                 'enabled': r.get('enabled', True),
                 'days': r.get('days', list(range(7))),
-                'ringtone': r.get('ringtone', '🔇 Default (Vibrate Only)')
+                'ringtone': r.get('ringtone', '🔔 Default System Sound')
             } for r in self.reminders]
             
             os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
@@ -605,7 +606,7 @@ class ReminderApp(App):
         # Minute spinner (0-59) - FULL precision
         minute = Spinner(
             text=str(reminder['time'].minute).zfill(2) if reminder else "00",
-            values=[str(i).zfill(2) for i in range(0, 60)],  # ALL minutes 0-59
+            values=[str(i).zfill(2) for i in range(0, 60)],
             size_hint=(0.3, 1),
             background_color=(0.96, 0.97, 0.99, 1),
             font_size='18sp'
@@ -639,28 +640,14 @@ class ReminderApp(App):
         ringtone_label.bind(size=ringtone_label.setter('text_size'))
         form.add_widget(ringtone_label)
         
-        selected_ringtone = [reminder.get('ringtone', '🔇 Default (Vibrate Only)') if reminder else '🔇 Default (Vibrate Only)']
-        
         ringtone_spinner = Spinner(
-            text=selected_ringtone[0],
+            text=reminder.get('ringtone', '🔔 Default System Sound') if reminder else '🔔 Default System Sound',
             values=sorted(self.ringtones.keys()),
             size_hint=(1, None),
             height=dp(50),
             background_color=(0.96, 0.97, 0.99, 1),
             font_size='15sp'
         )
-        
-        def on_ringtone_select(spinner, text):
-            if text == '🎵 Pick from Device':
-                def callback(uri):
-                    if uri:
-                        selected_ringtone[0] = f"🎵 Custom: {uri[:30]}..."
-                        ringtone_spinner.text = selected_ringtone[0]
-                self.pick_ringtone_from_device(callback)
-            else:
-                selected_ringtone[0] = text
-        
-        ringtone_spinner.bind(text=on_ringtone_select)
         form.add_widget(ringtone_spinner)
 
         # Days selection with colorful design
@@ -817,7 +804,7 @@ class ReminderApp(App):
                 'enabled': True,
                 'days': sorted(selected_days),
                 'snooze_until': None,
-                'ringtone': selected_ringtone[0]
+                'ringtone': ringtone_spinner.text
             }
 
             if self.editing_index is not None:
@@ -971,40 +958,114 @@ class ReminderApp(App):
         for idx, r in enumerate(self.reminders):
             self.reminder_list.add_widget(ReminderCard(r, idx, callbacks))
 
+    def play_ringtone(self, ringtone_name):
+        """Play selected ringtone using Android MediaPlayer"""
+        try:
+            # Stop any existing sound
+            if self.media_player:
+                try:
+                    self.media_player.stop()
+                    self.media_player.release()
+                except:
+                    pass
+                self.media_player = None
+            
+            if platform == 'android' and ringtone_name and not ringtone_name.startswith('🔇'):
+                from jnius import autoclass
+                
+                MediaPlayer = autoclass('android.media.MediaPlayer')
+                AudioManager = autoclass('android.media.AudioManager')
+                Uri = autoclass('android.net.Uri')
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                File = autoclass('java.io.File')
+                
+                activity = PythonActivity.mActivity
+                
+                # Create and configure media player
+                self.media_player = MediaPlayer()
+                self.media_player.setAudioStreamType(AudioManager.STREAM_ALARM)
+                
+                if ringtone_name == '🔔 Default System Sound':
+                    # Use default notification sound
+                    notification_uri = Uri.parse("android.resource://" + activity.getPackageName() + "/" + str(activity.getApplicationInfo().icon))
+                    # Actually use system default ringtone
+                    RingtoneManager = autoclass('android.media.RingtoneManager')
+                    default_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    
+                    self.media_player.setDataSource(activity, default_uri)
+                else:
+                    # Play bundled ringtone
+                    ringtone_path = self.ringtones.get(ringtone_name)
+                    if ringtone_path and os.path.exists(ringtone_path):
+                        abs_path = os.path.abspath(ringtone_path)
+                        file_uri = Uri.fromFile(File(abs_path))
+                        self.media_player.setDataSource(activity, file_uri)
+                
+                self.media_player.setLooping(True)
+                self.media_player.prepare()
+                self.media_player.start()
+                print(f"Playing ringtone: {ringtone_name}")
+                
+        except Exception as e:
+            print(f"Ringtone playback error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def stop_ringtone(self):
+        """Stop playing ringtone"""
+        try:
+            if self.media_player:
+                self.media_player.stop()
+                self.media_player.release()
+                self.media_player = None
+                print("Ringtone stopped")
+        except Exception as e:
+            print(f"Error stopping ringtone: {e}")
+
     def show_android_notification(self, reminder):
-        """Show Android notification"""
+        """Show Android notification with sound"""
         if platform == 'android':
             try:
-                from jnius import autoclass, cast
+                from jnius import autoclass
                 
                 PythonActivity = autoclass('org.kivy.android.PythonActivity')
                 Context = autoclass('android.content.Context')
                 NotificationManager = autoclass('android.app.NotificationManager')
                 NotificationCompat = autoclass('androidx.core.app.NotificationCompat')
-                NotificationBuilder = NotificationCompat.Builder
                 PendingIntent = autoclass('android.app.PendingIntent')
                 Intent = autoclass('android.content.Intent')
+                Uri = autoclass('android.net.Uri')
+                AudioAttributes = autoclass('android.media.AudioAttributes')
                 
                 activity = PythonActivity.mActivity
                 notification_service = activity.getSystemService(Context.NOTIFICATION_SERVICE)
                 
-                # Create notification
+                # Create intent
                 intent = Intent(activity.getApplicationContext(), PythonActivity)
-                intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 pending_intent = PendingIntent.getActivity(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
                 
-                builder = NotificationBuilder(activity, "reminder_channel")
+                # Build notification
+                builder = NotificationCompat.Builder(activity, "reminder_channel")
                 builder.setContentTitle("⏰ Reminder!")
                 builder.setContentText(reminder['text'])
                 builder.setSmallIcon(activity.getApplicationInfo().icon)
                 builder.setContentIntent(pending_intent)
-                builder.setPriority(NotificationCompat.PRIORITY_HIGH)
+                builder.setPriority(NotificationCompat.PRIORITY_MAX)
+                builder.setCategory(NotificationCompat.CATEGORY_ALARM)
                 builder.setAutoCancel(True)
                 builder.setVibrate([0, 500, 200, 500])
                 
+                # Add sound to notification
+                ringtone_name = reminder.get('ringtone', '🔔 Default System Sound')
+                if not ringtone_name.startswith('🔇'):
+                    RingtoneManager = autoclass('android.media.RingtoneManager')
+                    default_sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    builder.setSound(default_sound)
+                
                 notification = builder.build()
                 notification_service.notify(1001, notification)
-                print("Notification sent!")
+                print("Notification sent with sound!")
                 
             except Exception as e:
                 print(f"Notification error: {e}")
@@ -1074,54 +1135,8 @@ class ReminderApp(App):
         if self.alarm_popup:
             self.alarm_popup.dismiss()
         
-        if self.alarm_sound:
-            self.alarm_sound.stop()
-            
+        self.stop_ringtone()
         print(f"Snoozed for {self.snooze_minutes} minutes until {reminder['snooze_until']}")
-
-    def play_ringtone(self, ringtone_name):
-        """Play selected ringtone"""
-        try:
-            if self.alarm_sound:
-                self.alarm_sound.stop()
-                self.alarm_sound.unload()
-                self.alarm_sound = None
-            
-            if ringtone_name and not ringtone_name.startswith('🔇'):
-                # Check if it's a custom URI from device
-                if ringtone_name.startswith('🎵 Custom:'):
-                    # Extract URI and play from device
-                    print(f"Playing custom ringtone from device")
-                    # On Android, use MediaPlayer for URIs
-                    if platform == 'android':
-                        try:
-                            from jnius import autoclass
-                            MediaPlayer = autoclass('android.media.MediaPlayer')
-                            Uri = autoclass('android.net.Uri')
-                            PythonActivity = autoclass('org.kivy.android.PythonActivity')
-                            
-                            player = MediaPlayer()
-                            # Note: You'd need to store the actual URI, not just the display text
-                            # For now, just log it
-                            print("Custom ringtone feature - URI playback needs full implementation")
-                        except Exception as e:
-                            print(f"Custom ringtone error: {e}")
-                else:
-                    # Play bundled ringtone
-                    ringtone_path = self.ringtones.get(ringtone_name)
-                    if ringtone_path and ringtone_path != 'PICK_FROM_DEVICE' and os.path.exists(ringtone_path):
-                        self.alarm_sound = SoundLoader.load(ringtone_path)
-                        if self.alarm_sound:
-                            self.alarm_sound.loop = True
-                            self.alarm_sound.volume = 0.8
-                            self.alarm_sound.play()
-                            print(f"Playing ringtone: {ringtone_name}")
-                        else:
-                            print(f"Failed to load ringtone: {ringtone_path}")
-        except Exception as e:
-            print(f"Ringtone error: {e}")
-            import traceback
-            traceback.print_exc()
 
     def show_alarm(self, reminder, idx):
         """Show alarm popup with vibration, sound and notification"""
@@ -1130,7 +1145,7 @@ class ReminderApp(App):
             self.show_android_notification(reminder)
             
             # Play ringtone
-            ringtone = reminder.get('ringtone', '🔇 Default (Vibrate Only)')
+            ringtone = reminder.get('ringtone', '🔔 Default System Sound')
             self.play_ringtone(ringtone)
             
             # Vibrate on Android
@@ -1146,14 +1161,13 @@ class ReminderApp(App):
                     activity = PythonActivity.mActivity
                     vibrator = activity.getSystemService(Context.VIBRATOR_SERVICE)
                     
-                    # Use VibrationEffect for Android 8.0+ (API 26+)
                     if VERSION.SDK_INT >= 26:
                         pattern = [0, 500, 200, 500, 200, 500]
-                        effect = VibrationEffect.createWaveform(pattern, -1)
+                        effect = VibrationEffect.createWaveform(pattern, 0)  # 0 = repeat
                         vibrator.vibrate(effect)
                     else:
                         pattern = [0, 500, 200, 500, 200, 500]
-                        vibrator.vibrate(pattern, -1)
+                        vibrator.vibrate(pattern, 0)  # 0 = repeat
                     
                     print("Vibration triggered")
                 except Exception as e:
@@ -1162,14 +1176,12 @@ class ReminderApp(App):
             # Create colorful alarm popup
             content = BoxLayout(orientation='vertical', spacing=dp(18), padding=dp(22))
             
-            # Animated alarm icon
             content.add_widget(Label(
                 text="⏰",
                 font_size='72sp',
                 size_hint=(1, 0.18)
             ))
             
-            # Alert title with vibrant color
             content.add_widget(Label(
                 text="REMINDER!",
                 font_size='32sp',
@@ -1178,7 +1190,6 @@ class ReminderApp(App):
                 size_hint=(1, 0.12)
             ))
             
-            # Reminder text
             reminder_label = Label(
                 text=reminder['text'],
                 font_size='20sp',
@@ -1188,7 +1199,6 @@ class ReminderApp(App):
             )
             content.add_widget(reminder_label)
             
-            # Time display
             content.add_widget(Label(
                 text=datetime.datetime.now().strftime('%I:%M %p'),
                 font_size='18sp',
@@ -1196,7 +1206,7 @@ class ReminderApp(App):
                 color=(0.5, 0.55, 0.65, 1)
             ))
             
-            # Snooze controls with better design
+            # Snooze controls
             snooze_box = BoxLayout(orientation='vertical', size_hint=(1, 0.22), spacing=dp(8))
             snooze_label = Label(
                 text=f"😴 Snooze for {self.snooze_minutes} minutes",
@@ -1224,7 +1234,7 @@ class ReminderApp(App):
             snooze_box.add_widget(slider)
             content.add_widget(snooze_box)
             
-            # Action buttons with vibrant colors
+            # Action buttons
             btn_box = BoxLayout(size_hint=(1, 0.14), spacing=dp(14))
             
             snooze_btn = Button(
@@ -1259,8 +1269,20 @@ class ReminderApp(App):
             )
             
             def on_dismiss(instance):
-                if self.alarm_sound:
-                    self.alarm_sound.stop()
+                self.stop_ringtone()
+                # Stop vibration
+                if platform == 'android':
+                    try:
+                        from jnius import autoclass
+                        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                        Context = autoclass('android.content.Context')
+                        Vibrator = autoclass('android.os.Vibrator')
+                        
+                        activity = PythonActivity.mActivity
+                        vibrator = activity.getSystemService(Context.VIBRATOR_SERVICE)
+                        vibrator.cancel()
+                    except:
+                        pass
             
             snooze_btn.bind(on_press=lambda x: self.snooze_alarm(reminder, idx))
             dismiss_btn.bind(on_press=lambda x: self.alarm_popup.dismiss())
@@ -1285,8 +1307,7 @@ class ReminderApp(App):
         """Save data when app closes"""
         print("App stopping...")
         self.save_reminders()
-        if self.alarm_sound:
-            self.alarm_sound.stop()
+        self.stop_ringtone()
 
 
 if __name__ == "__main__":
