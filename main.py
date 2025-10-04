@@ -29,7 +29,7 @@ if platform == 'android':
         from android.permissions import request_permissions, Permission, check_permission
         from jnius import autoclass
         
-        # Request ALL necessary permissions
+        # Request ALL necessary permissions including storage for custom ringtones
         permissions = [
             Permission.VIBRATE,
             Permission.WAKE_LOCK,
@@ -110,10 +110,9 @@ def create_notification_channel():
             channel.setDescription("Notifications for reminders")
             channel.enableVibration(True)
             channel.setVibrationPattern([0, 500, 200, 500])
-            channel.setLockscreenVisibility(1)  # Show on lockscreen
-            channel.setBypassDnd(True)  # Bypass Do Not Disturb
+            channel.setLockscreenVisibility(1)
+            channel.setBypassDnd(True)
             
-            # Set default sound
             default_sound_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             audio_attributes = AudioAttributes.Builder() \
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION) \
@@ -137,7 +136,6 @@ def start_background_service():
             PythonService = autoclass('org.kivy.android.PythonService')
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             Intent = autoclass('android.content.Intent')
-            Context = autoclass('android.content.Context')
             Build = autoclass('android.os.Build')
             
             activity = PythonActivity.mActivity
@@ -146,7 +144,6 @@ def start_background_service():
             service_intent.putExtra("serviceTitle", "My Reminders")
             service_intent.putExtra("serviceDescription", "Monitoring reminders")
             
-            # Start as foreground service on Android 8+
             if Build.VERSION.SDK_INT >= 26:
                 activity.startForegroundService(service_intent)
             else:
@@ -259,7 +256,7 @@ class ReminderCard(ModernCard):
         priority = reminder.get('priority', 'Medium')
         if priority == 'High':
             priority_indicator = Label(
-                text="!!!",
+                text="[!]",  # Changed from emoji
                 font_size='18sp',
                 bold=True,
                 color=(0.95, 0.3, 0.3, 1),
@@ -296,7 +293,7 @@ class ReminderCard(ModernCard):
         else:
             days_text = " ".join([days_map[d] for d in sorted(selected_days)])
         
-        repeat_icon = Label(text="🔁", font_size='16sp', size_hint_x=None, width=dp(25))
+        repeat_icon = Label(text="[R]", font_size='16sp', size_hint_x=None, width=dp(25))  # Changed from emoji
         info_row.add_widget(repeat_icon)
         
         days_label = Label(
@@ -310,7 +307,7 @@ class ReminderCard(ModernCard):
         info_row.add_widget(days_label)
         
         if reminder.get('note'):
-            note_icon = Label(text="📝", font_size='14sp', size_hint_x=None, width=dp(25))
+            note_icon = Label(text="[N]", font_size='14sp', size_hint_x=None, width=dp(25))  # Changed from emoji
             info_row.add_widget(note_icon)
         
         info_row.add_widget(Label(size_hint_x=1))
@@ -332,7 +329,7 @@ class ReminderCard(ModernCard):
         toggle_btn.bind(on_press=lambda x: callbacks['toggle'](index))
         
         edit_btn = Button(
-            text="✏️ Edit",
+            text="Edit",  # Simplified
             background_normal='',
             background_color=(0.35, 0.6, 0.95, 1),
             color=(1, 1, 1, 1),
@@ -343,7 +340,7 @@ class ReminderCard(ModernCard):
         edit_btn.bind(on_press=lambda x: callbacks['edit'](index))
         
         del_btn = Button(
-            text="🗑️",
+            text="Del",  # Simplified
             background_normal='',
             background_color=(0.95, 0.4, 0.4, 1),
             color=(1, 1, 1, 1),
@@ -385,8 +382,6 @@ class ReminderApp(App):
             self.data_file = 'reminders.json'
         
         create_notification_channel()
-        
-        # Start service after a delay to ensure app is fully initialized
         Clock.schedule_once(lambda dt: start_background_service(), 3)
         
         self.load_ringtones()
@@ -408,7 +403,7 @@ class ReminderApp(App):
         
         title_row = BoxLayout(size_hint_y=0.5)
         title = Label(
-            text="⏰ My Reminders",
+            text="[ALARM] My Reminders",  # Changed from emoji
             font_size='26sp',
             bold=True,
             halign='left',
@@ -418,7 +413,7 @@ class ReminderApp(App):
         title_row.add_widget(title)
         
         settings_btn = Button(
-            text="⚙️",
+            text="[S]",  # Changed from emoji
             size_hint=(None, 1),
             width=dp(45),
             background_normal='',
@@ -543,9 +538,9 @@ class ReminderApp(App):
             box.add_widget(text_label)
             return box, value_label
         
-        total_box, self.total_stat = create_stat_box("📋", 0, "Total")
-        active_box, self.active_stat = create_stat_box("✅", 0, "Active")
-        today_box, self.today_stat = create_stat_box("📅", 0, "Today")
+        total_box, self.total_stat = create_stat_box("[T]", 0, "Total")  # Changed from emojis
+        active_box, self.active_stat = create_stat_box("[A]", 0, "Active")
+        today_box, self.today_stat = create_stat_box("[D]", 0, "Today")
         
         stats_card.add_widget(total_box)
         stats_card.add_widget(active_box)
@@ -567,8 +562,6 @@ class ReminderApp(App):
         root.add_widget(self.layout)
         
         self.refresh_reminder_list()
-        
-        # Check reminders more frequently (every 5 seconds)
         Clock.schedule_interval(self.check_reminders, 5)
         
         print("Enhanced UI built successfully")
@@ -579,7 +572,7 @@ class ReminderApp(App):
         content = BoxLayout(orientation='vertical', spacing=dp(16), padding=dp(20))
         
         content.add_widget(Label(
-            text="⚙️ Settings & Permissions",
+            text="[SETTINGS] Settings & Permissions",  # Changed
             font_size='22sp',
             bold=True,
             size_hint_y=None,
@@ -589,10 +582,10 @@ class ReminderApp(App):
         
         info_text = """For reminders to work properly:
 
-✅ Allow notifications
-✅ Allow exact alarms (Android 12+)
-✅ Disable battery optimization
-✅ Allow app to run in background
+- Allow notifications
+- Allow exact alarms (Android 12+)
+- Disable battery optimization
+- Allow app to run in background
 
 The app will request these permissions automatically."""
         
@@ -610,7 +603,7 @@ The app will request these permissions automatically."""
         
         if platform == 'android':
             perm_btn = Button(
-                text="📱 Open App Settings",
+                text="[PHONE] Open App Settings",  # Changed
                 size_hint_y=None,
                 height=dp(50),
                 background_normal='',
@@ -641,7 +634,7 @@ The app will request these permissions automatically."""
             content.add_widget(perm_btn)
         
         restart_btn = Button(
-            text="🔄 Restart Service",
+            text="[REFRESH] Restart Service",  # Changed
             size_hint_y=None,
             height=dp(50),
             background_normal='',
@@ -698,13 +691,14 @@ The app will request these permissions automatically."""
         self.refresh_reminder_list()
 
     def load_ringtones(self):
+        # FIXED: Removed duplicate "Default System Sound"
         self.ringtones = {
-            'Default System Sound': 'SYSTEM_DEFAULT',
+            'System Alarm': 'SYSTEM_DEFAULT',
             'Vibrate Only': 'VIBRATE_ONLY'
         }
         
         if platform == 'android':
-            self.ringtones['Browse for Sound File...'] = 'BROWSE'
+            self.ringtones['Browse for Sound...'] = 'BROWSE'
 
     def browse_ringtone(self, callback):
         if platform == 'android':
@@ -715,13 +709,17 @@ The app will request these permissions automatically."""
                 Intent = autoclass('android.content.Intent')
                 PythonActivity = autoclass('org.kivy.android.PythonActivity')
                 
+                # Store callback as instance variable
+                self._ringtone_callback = callback
+                
                 def on_activity_result(request_code, result_code, intent):
                     if request_code == 1001 and result_code == -1 and intent:
                         uri = intent.getData()
                         if uri:
                             uri_string = uri.toString()
                             print(f"Selected ringtone URI: {uri_string}")
-                            callback(uri_string)
+                            if hasattr(self, '_ringtone_callback') and self._ringtone_callback:
+                                self._ringtone_callback(uri_string)
                     activity.unbind(on_activity_result=on_activity_result)
                 
                 activity.bind(on_activity_result=on_activity_result)
@@ -756,7 +754,7 @@ The app will request these permissions automatically."""
                             'enabled': item.get('enabled', True),
                             'days': item.get('days', list(range(7))),
                             'snooze_until': None,
-                            'ringtone': item.get('ringtone', 'Default System Sound'),
+                            'ringtone': item.get('ringtone', 'System Alarm'),
                             'ringtone_uri': item.get('ringtone_uri', None),
                             'category': item.get('category', 'Personal'),
                             'priority': item.get('priority', 'Medium'),
@@ -774,7 +772,7 @@ The app will request these permissions automatically."""
                 'recurring': r.get('recurring', True),
                 'enabled': r.get('enabled', True),
                 'days': r.get('days', list(range(7))),
-                'ringtone': r.get('ringtone', 'Default System Sound'),
+                'ringtone': r.get('ringtone', 'System Alarm'),
                 'ringtone_uri': r.get('ringtone_uri', None),
                 'category': r.get('category', 'Personal'),
                 'priority': r.get('priority', 'Medium'),
@@ -800,7 +798,7 @@ The app will request these permissions automatically."""
         form.bind(minimum_height=form.setter('height'))
         
         title_lbl = Label(
-            text=("✏️ Edit Reminder" if reminder else "➕ New Reminder"),
+            text=("Edit Reminder" if reminder else "New Reminder"),
             font_size='22sp',
             bold=True,
             size_hint=(1, None),
@@ -907,7 +905,7 @@ The app will request these permissions automatically."""
         form.add_widget(priority_box)
 
         time_label = Label(
-            text="⏰ Set Time",
+            text="[CLOCK] Set Time",
             font_size='14sp',
             bold=True,
             size_hint=(1, None),
@@ -930,10 +928,9 @@ The app will request these permissions automatically."""
         
         colon = Label(text=":", size_hint=(0.08, 1), font_size='22sp', bold=True)
         
-        # FIXED: Allow every minute, not just 5-minute intervals
         minute = Spinner(
             text=str(reminder['time'].minute).zfill(2) if reminder else "00",
-            values=[str(i).zfill(2) for i in range(0, 60)],  # Every minute 00-59
+            values=[str(i).zfill(2) for i in range(0, 60)],
             size_hint=(0.3, 1),
             background_color=(0.97, 0.98, 0.99, 1),
             font_size='16sp'
@@ -954,7 +951,7 @@ The app will request these permissions automatically."""
         form.add_widget(time_box)
 
         ringtone_label = Label(
-            text="🔔 Ringtone",
+            text="[BELL] Ringtone",
             font_size='14sp',
             bold=True,
             size_hint=(1, None),
@@ -968,7 +965,7 @@ The app will request these permissions automatically."""
         selected_ringtone_uri = {'uri': reminder.get('ringtone_uri') if reminder else None}
         
         ringtone_spinner = Spinner(
-            text=reminder.get('ringtone', 'Default System Sound') if reminder else 'Default System Sound',
+            text=reminder.get('ringtone', 'System Alarm') if reminder else 'System Alarm',
             values=sorted(self.ringtones.keys()),
             size_hint=(1, None),
             height=dp(45),
@@ -977,7 +974,7 @@ The app will request these permissions automatically."""
         )
         
         def on_ringtone_select(spinner, text):
-            if text == 'Browse for Sound File...':
+            if text == 'Browse for Sound...':
                 def on_file_selected(uri):
                     selected_ringtone_uri['uri'] = uri
                     spinner.text = 'Custom Sound'
@@ -987,7 +984,7 @@ The app will request these permissions automatically."""
         form.add_widget(ringtone_spinner)
 
         days_label = Label(
-            text="📅 Repeat On",
+            text="[CALENDAR] Repeat On",
             font_size='14sp',
             bold=True,
             size_hint=(1, None),
@@ -1062,7 +1059,7 @@ The app will request these permissions automatically."""
         form.add_widget(quick_box)
 
         note_label = Label(
-            text="📝 Note (Optional)",
+            text="[NOTE] Note (Optional)",
             font_size='14sp',
             bold=True,
             size_hint=(1, None),
@@ -1093,7 +1090,7 @@ The app will request these permissions automatically."""
         btn_box = BoxLayout(size_hint=(1, None), height=dp(52), spacing=dp(10))
         
         cancel_btn = Button(
-            text="✕ Cancel",
+            text="Cancel",
             background_normal='',
             background_color=(0.7, 0.7, 0.72, 1),
             color=(1, 1, 1, 1),
@@ -1102,7 +1099,7 @@ The app will request these permissions automatically."""
         )
         
         save_btn = Button(
-            text="💾 Save Reminder",
+            text="Save Reminder",
             background_normal='',
             background_color=(0.2, 0.75, 0.5, 1),
             color=(1, 1, 1, 1),
@@ -1125,7 +1122,7 @@ The app will request these permissions automatically."""
         def save_reminder(instance):
             text = text_input.text.strip()
             if not text:
-                text_input.hint_text = "⚠️ Please enter reminder text"
+                text_input.hint_text = "Please enter reminder text"
                 text_input.background_color = (1, 0.9, 0.9, 1)
                 return
 
@@ -1138,7 +1135,7 @@ The app will request these permissions automatically."""
 
             selected_days = [i for i, cb in enumerate(day_checks) if cb.active]
             if not selected_days:
-                days_label.text = "⚠️ Select at least one day"
+                days_label.text = "[!] Select at least one day"
                 days_label.color = (0.95, 0.3, 0.3, 1)
                 return
 
@@ -1169,7 +1166,6 @@ The app will request these permissions automatically."""
             self.save_reminders()
             self.refresh_reminder_list()
             
-            # Restart service to load new reminders
             if platform == 'android':
                 Clock.schedule_once(lambda dt: start_background_service(), 0.5)
             
@@ -1196,7 +1192,6 @@ The app will request these permissions automatically."""
             self.save_reminders()
             self.refresh_reminder_list()
             
-            # Restart service to reload reminders
             if platform == 'android':
                 Clock.schedule_once(lambda dt: start_background_service(), 0.5)
 
@@ -1205,7 +1200,7 @@ The app will request these permissions automatically."""
             content = BoxLayout(orientation='vertical', spacing=dp(20), padding=dp(22))
             
             icon_label = Label(
-                text="🗑️",
+                text="[DEL]",
                 font_size='60sp',
                 size_hint=(1, 0.3),
                 color=(0.95, 0.4, 0.4, 1)
@@ -1242,7 +1237,7 @@ The app will request these permissions automatically."""
             )
             
             delete_btn = Button(
-                text="🗑️ Delete",
+                text="Delete",
                 background_normal='',
                 background_color=(0.95, 0.4, 0.4, 1),
                 color=(1, 1, 1, 1),
@@ -1271,7 +1266,6 @@ The app will request these permissions automatically."""
                 self.save_reminders()
                 self.refresh_reminder_list()
                 
-                # Restart service to reload reminders
                 if platform == 'android':
                     Clock.schedule_once(lambda dt: start_background_service(), 0.5)
                 
@@ -1309,7 +1303,7 @@ The app will request these permissions automatically."""
             
             empty_box = BoxLayout(orientation='vertical', spacing=dp(12))
             empty_box.add_widget(Label(
-                text="📭",
+                text="[EMPTY]",
                 font_size='60sp',
                 size_hint_y=0.4,
                 color=(0.6, 0.7, 0.85, 1)
@@ -1348,7 +1342,7 @@ The app will request these permissions automatically."""
             
             for cat in sorted(categories.keys()):
                 header = Label(
-                    text=f"📂 {cat}",
+                    text=f"[F] {cat}",
                     size_hint=(1, None),
                     height=dp(35),
                     font_size='15sp',
@@ -1394,13 +1388,12 @@ The app will request these permissions automatically."""
                 self.media_player.setAudioStreamType(AudioManager.STREAM_ALARM)
                 
                 try:
+                    # FIXED: Proper handling of custom ringtones
                     if ringtone_uri and ringtone_uri not in ['SYSTEM_DEFAULT', 'VIBRATE_ONLY', 'BROWSE']:
-                        # Try to use custom ringtone
                         uri = Uri.parse(ringtone_uri)
                         self.media_player.setDataSource(activity, uri)
                         print(f"Playing custom ringtone: {ringtone_uri}")
                     else:
-                        # Use default alarm sound
                         default_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                         self.media_player.setDataSource(activity, default_uri)
                         print("Playing default system alarm")
@@ -1412,7 +1405,6 @@ The app will request these permissions automatically."""
                     
                 except Exception as e:
                     print(f"Error with custom ringtone, falling back to default: {e}")
-                    # Fallback to default
                     self.media_player = MediaPlayer()
                     self.media_player.setAudioStreamType(AudioManager.STREAM_ALARM)
                     default_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
@@ -1460,7 +1452,7 @@ The app will request these permissions automatically."""
                 pending_intent = PendingIntent.getActivity(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
                 
                 builder = NotificationCompat.Builder(activity, "reminder_channel")
-                builder.setContentTitle(f"⏰ {reminder.get('category', 'Reminder')}")
+                builder.setContentTitle(f"[ALARM] {reminder.get('category', 'Reminder')}")
                 builder.setContentText(reminder['text'])
                 builder.setSmallIcon(activity.getApplicationInfo().icon)
                 builder.setContentIntent(pending_intent)
@@ -1554,7 +1546,7 @@ The app will request these permissions automatically."""
         """Show alarm popup with enhanced design"""
         try:
             self.show_android_notification(reminder)
-            self.play_ringtone(reminder.get('ringtone', 'Default System Sound'), 
+            self.play_ringtone(reminder.get('ringtone', 'System Alarm'), 
                              reminder.get('ringtone_uri'))
             
             if platform == 'android':
@@ -1582,7 +1574,7 @@ The app will request these permissions automatically."""
             content = BoxLayout(orientation='vertical', spacing=dp(16), padding=dp(20))
             
             content.add_widget(Label(
-                text="⏰",
+                text="[ALARM]",
                 font_size='80sp',
                 size_hint=(1, 0.2),
                 color=(0.95, 0.35, 0.4, 1)
@@ -1598,7 +1590,7 @@ The app will request these permissions automatically."""
             
             category = reminder.get('category', 'Personal')
             cat_label = Label(
-                text=f"📂 {category}",
+                text=f"[F] {category}",
                 font_size='14sp',
                 size_hint=(1, 0.06),
                 color=(0.4, 0.5, 0.65, 1),
@@ -1617,7 +1609,7 @@ The app will request these permissions automatically."""
             
             if reminder.get('note'):
                 note_label = Label(
-                    text=f"📝 {reminder['note']}",
+                    text=f"[N] {reminder['note']}",
                     font_size='14sp',
                     size_hint=(1, 0.1),
                     color=(0.5, 0.55, 0.65, 1),
@@ -1634,7 +1626,7 @@ The app will request these permissions automatically."""
             
             snooze_box = BoxLayout(orientation='vertical', size_hint=(1, 0.18), spacing=dp(6))
             snooze_label = Label(
-                text=f"😴 Snooze for {self.snooze_minutes} minutes",
+                text=f"[SLEEP] Snooze for {self.snooze_minutes} minutes",
                 font_size='15sp',
                 bold=True,
                 size_hint=(1, 0.4),
@@ -1651,7 +1643,7 @@ The app will request these permissions automatically."""
             
             def update_snooze(instance, value):
                 self.snooze_minutes = int(value)
-                snooze_label.text = f"😴 Snooze for {self.snooze_minutes} minutes"
+                snooze_label.text = f"[SLEEP] Snooze for {self.snooze_minutes} minutes"
             
             slider.bind(value=update_snooze)
             
@@ -1662,7 +1654,7 @@ The app will request these permissions automatically."""
             btn_box = BoxLayout(size_hint=(1, 0.16), spacing=dp(12))
             
             snooze_btn = Button(
-                text="😴 Snooze",
+                text="Snooze",
                 background_normal='',
                 background_color=(0.95, 0.65, 0.25, 1),
                 color=(1, 1, 1, 1),
@@ -1671,7 +1663,7 @@ The app will request these permissions automatically."""
             )
             
             dismiss_btn = Button(
-                text="✓ Dismiss",
+                text="Dismiss",
                 background_normal='',
                 background_color=(0.2, 0.75, 0.5, 1),
                 color=(1, 1, 1, 1),
@@ -1733,7 +1725,6 @@ The app will request these permissions automatically."""
         print("App stopping...")
         self.save_reminders()
         self.stop_ringtone()
-        # Service should continue running in background
 
 
 if __name__ == "__main__":
