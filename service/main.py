@@ -1,6 +1,6 @@
 """
-Enhanced background service for reminder app
-Supports categories, priorities, and notes
+Enhanced background service for reminder app - FIXED VERSION
+Supports categories, priorities, and custom ringtones
 """
 import os
 import json
@@ -35,8 +35,21 @@ class ReminderService:
         self.triggered_reminders = set()
         self.last_check_minute = -1
         self.media_player = None
+        self.wake_lock = None
         
         print(f"Service initialized. Data file: {self.data_file}")
+        
+        # FIXED: Create wake lock to keep service alive
+        try:
+            power_manager = self.service.getSystemService(Context.POWER_SERVICE)
+            self.wake_lock = power_manager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "MyReminders::ServiceWakeLock"
+            )
+            self.wake_lock.acquire()
+            print("Wake lock acquired - service will stay alive")
+        except Exception as e:
+            print(f"Wake lock error: {e}")
     
     def load_reminders(self):
         """Load reminders from JSON file with enhanced fields"""
@@ -53,7 +66,7 @@ class ReminderService:
                             'minute': m,
                             'enabled': item.get('enabled', True),
                             'days': item.get('days', list(range(7))),
-                            'ringtone': item.get('ringtone', 'Default System Sound'),
+                            'ringtone': item.get('ringtone', 'System Alarm'),
                             'ringtone_uri': item.get('ringtone_uri', None),
                             'category': item.get('category', 'Personal'),
                             'priority': item.get('priority', 'Medium'),
@@ -77,20 +90,17 @@ class ReminderService:
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             )
             
-            # Enhanced notification title with category
             category = reminder.get('category', 'Reminder')
             priority = reminder.get('priority', 'Medium')
             
-            # Priority icon
-            priority_icon = "⚠️ " if priority == 'High' else ""
+            priority_icon = "[!] " if priority == 'High' else ""
             
             builder = NotificationCompat.Builder(self.service, "reminder_channel")
-            builder.setContentTitle(f"{priority_icon}⏰ {category}")
+            builder.setContentTitle(f"{priority_icon}[ALARM] {category}")
             builder.setContentText(reminder['text'])
             builder.setSmallIcon(self.service.getApplicationInfo().icon)
             builder.setContentIntent(pending_intent)
             
-            # Set priority based on reminder priority
             if priority == 'High':
                 builder.setPriority(NotificationCompat.PRIORITY_MAX)
             elif priority == 'Medium':
@@ -101,27 +111,32 @@ class ReminderService:
             builder.setCategory(NotificationCompat.CATEGORY_ALARM)
             builder.setAutoCancel(True)
             
-            # Vibration pattern based on priority
             if priority == 'High':
                 builder.setVibrate([0, 300, 100, 300, 100, 500])
             else:
                 builder.setVibrate([0, 500, 200, 500])
             
-            # Add note to notification if exists
             if reminder.get('note'):
                 builder.setStyle(
                     NotificationCompat.BigTextStyle()
-                    .bigText(f"{reminder['text']}\n\n📝 {reminder['note']}")
+                    .bigText(f"{reminder['text']}\n\n[N] {reminder['note']}")
                 )
             
-            # Add sound based on user preference
+            # FIXED: Proper sound handling for custom ringtones
             if reminder.get('ringtone') != 'Vibrate Only':
                 ringtone_uri = reminder.get('ringtone_uri')
-                if ringtone_uri and ringtone_uri != 'SYSTEM_DEFAULT':
-                    sound_uri = Uri.parse(ringtone_uri)
+                if ringtone_uri and ringtone_uri not in ['SYSTEM_DEFAULT', 'VIBRATE_ONLY', 'BROWSE']:
+                    try:
+                        sound_uri = Uri.parse(ringtone_uri)
+                        builder.setSound(sound_uri)
+                        print(f"Using custom sound: {ringtone_uri}")
+                    except Exception as e:
+                        print(f"Custom sound error, using default: {e}")
+                        sound_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        builder.setSound(sound_uri)
                 else:
                     sound_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                builder.setSound(sound_uri)
+                    builder.setSound(sound_uri)
             
             notification = builder.build()
             notification.flags |= notification.FLAG_INSISTENT | notification.FLAG_AUTO_CANCEL
@@ -157,7 +172,7 @@ class ReminderService:
             print(f"Vibration error: {e}")
     
     def play_alarm(self, reminder):
-        """Play alarm sound with enhanced handling"""
+        """Play alarm sound with enhanced handling - FIXED"""
         try:
             if self.media_player:
                 try:
@@ -167,26 +182,46 @@ class ReminderService:
                     pass
                 self.media_player = None
             
-            ringtone_name = reminder.get('ringtone', 'Default System Sound')
+            ringtone_name = reminder.get('ringtone', 'System Alarm')
             
             if ringtone_name != 'Vibrate Only':
                 self.media_player = MediaPlayer()
                 self.media_player.setAudioStreamType(AudioManager.STREAM_ALARM)
                 
                 ringtone_uri = reminder.get('ringtone_uri')
-                if ringtone_uri and ringtone_uri != 'SYSTEM_DEFAULT':
-                    uri = Uri.parse(ringtone_uri)
-                    self.media_player.setDataSource(self.service, uri)
-                    print(f"Playing custom ringtone for {reminder.get('category', 'reminder')}")
-                else:
+                
+                # FIXED: Proper custom ringtone handling
+                try:
+                    if ringtone_uri and ringtone_uri not in ['SYSTEM_DEFAULT', 'VIBRATE_ONLY', 'BROWSE']:
+                        uri = Uri.parse(ringtone_uri)
+                        self.media_player.setDataSource(self.service, uri)
+                        print(f"Playing custom ringtone: {ringtone_uri}")
+                    else:
+                        default_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        self.media_player.setDataSource(self.service, default_uri)
+                        print("Playing system alarm")
+                    
+                    self.media_player.setLooping(True)
+                    self.media_player.prepare()
+                    self.media_player.start()
+                    print("Alarm playback started successfully")
+                    
+                except Exception as e:
+                    print(f"Custom ringtone error, falling back to default: {e}")
+                    # Fallback to default
+                    if self.media_player:
+                        try:
+                            self.media_player.release()
+                        except:
+                            pass
+                    self.media_player = MediaPlayer()
+                    self.media_player.setAudioStreamType(AudioManager.STREAM_ALARM)
                     default_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
                     self.media_player.setDataSource(self.service, default_uri)
-                    print(f"Playing default alarm for {reminder.get('category', 'reminder')}")
-                
-                # High priority reminders loop more aggressively
-                self.media_player.setLooping(True)
-                self.media_player.prepare()
-                self.media_player.start()
+                    self.media_player.setLooping(True)
+                    self.media_player.prepare()
+                    self.media_player.start()
+                    print("Playing default alarm after error")
                 
         except Exception as e:
             print(f"Alarm playback error: {e}")
@@ -200,9 +235,9 @@ class ReminderService:
             wake_lock = power_manager.newWakeLock(
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK | 
                 PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                "MyReminders::WakeLock"
+                "MyReminders::AlarmWakeLock"
             )
-            wake_lock.acquire(10000)  # 10 seconds
+            wake_lock.acquire(10000)
             
             intent = Intent(self.service.getApplicationContext(), PythonActivity)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | 
@@ -231,7 +266,6 @@ class ReminderService:
             
             reminders = self.load_reminders()
             
-            # Sort by priority to trigger high priority first
             priority_order = {'High': 0, 'Medium': 1, 'Low': 2}
             reminders.sort(key=lambda x: priority_order.get(x.get('priority', 'Medium'), 1))
             
@@ -258,7 +292,6 @@ class ReminderService:
                         
                         self.triggered_reminders.add(reminder_key)
             
-            # Midnight reset
             if now.hour == 0 and now.minute == 0:
                 print("Midnight reset - clearing triggered reminders")
                 self.triggered_reminders.clear()
@@ -279,14 +312,13 @@ class ReminderService:
             )
             
             builder = NotificationCompat.Builder(self.service, "reminder_channel")
-            builder.setContentTitle("⏰ My Reminders")
+            builder.setContentTitle("[ALARM] My Reminders")
             builder.setContentText("Monitoring your reminders...")
             builder.setSmallIcon(self.service.getApplicationInfo().icon)
             builder.setContentIntent(pending_intent)
             builder.setPriority(NotificationCompat.PRIORITY_LOW)
             builder.setOngoing(True)
             
-            # Show active reminder count
             reminders = self.load_reminders()
             active_count = sum(1 for r in reminders if r.get('enabled'))
             if active_count > 0:
@@ -300,7 +332,7 @@ class ReminderService:
             print(f"Foreground service error: {e}")
     
     def run(self):
-        """Main service loop"""
+        """Main service loop - FIXED to stay alive"""
         print("Enhanced service running...")
         self.start_foreground()
         
@@ -310,7 +342,18 @@ class ReminderService:
                 time.sleep(30)  # Check every 30 seconds
             except Exception as e:
                 print(f"Service loop error: {e}")
+                import traceback
+                traceback.print_exc()
                 time.sleep(30)
+    
+    def __del__(self):
+        """Release wake lock on cleanup"""
+        try:
+            if self.wake_lock and self.wake_lock.isHeld():
+                self.wake_lock.release()
+                print("Wake lock released")
+        except:
+            pass
 
 
 if __name__ == "__main__":
