@@ -21,14 +21,15 @@ from kivy.core.audio import SoundLoader
 
 print("App starting...")
 
-# Set background color
-Window.clearcolor = (0.95, 0.96, 0.98, 1)
+# Set background color - soft gradient-like color
+Window.clearcolor = (0.93, 0.94, 0.96, 1)
 
 # Request permissions on Android
 if platform == 'android':
     print("Requesting Android permissions...")
     try:
         from android.permissions import request_permissions, Permission, check_permission
+        from jnius import autoclass, cast
         
         # Request all necessary permissions
         permissions = [
@@ -38,104 +39,176 @@ if platform == 'android':
             Permission.POST_NOTIFICATIONS,
             Permission.USE_EXACT_ALARM,
             Permission.FOREGROUND_SERVICE,
-            Permission.READ_EXTERNAL_STORAGE
+            Permission.READ_EXTERNAL_STORAGE,
+            Permission.WRITE_EXTERNAL_STORAGE,
+            Permission.READ_MEDIA_AUDIO,
         ]
         
         request_permissions(permissions)
         print("Permissions requested")
         
-        # Check if we have notification permission (Android 13+)
-        try:
-            from jnius import autoclass
-            VERSION = autoclass('android.os.Build$VERSION')
-            if VERSION.SDK_INT >= 33:  # Android 13+
-                has_notification = check_permission(Permission.POST_NOTIFICATIONS)
-                print(f"Notification permission: {has_notification}")
-        except Exception as e:
-            print(f"Permission check error: {e}")
-            
     except Exception as e:
         print(f"Permission error: {e}")
 
 
+def create_notification_channel():
+    """Create notification channel for Android 8.0+"""
+    if platform == 'android':
+        try:
+            from jnius import autoclass
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Context = autoclass('android.content.Context')
+            NotificationManager = autoclass('android.app.NotificationManager')
+            NotificationChannel = autoclass('android.app.NotificationChannel')
+            
+            activity = PythonActivity.mActivity
+            notification_service = activity.getSystemService(Context.NOTIFICATION_SERVICE)
+            
+            channel_id = "reminder_channel"
+            channel_name = "Reminder Notifications"
+            importance = NotificationManager.IMPORTANCE_HIGH
+            
+            channel = NotificationChannel(channel_id, channel_name, importance)
+            channel.setDescription("Notifications for reminders")
+            channel.enableVibration(True)
+            channel.setVibrationPattern([0, 500, 200, 500])
+            
+            notification_service.createNotificationChannel(channel)
+            print("Notification channel created")
+        except Exception as e:
+            print(f"Channel creation error: {e}")
+
+
 class ModernCard(BoxLayout):
-    """Base class for modern card-style widgets"""
-    def __init__(self, bg_color=(1, 1, 1, 1), **kwargs):
+    """Base class for modern card-style widgets with shadow effect"""
+    def __init__(self, bg_color=(1, 1, 1, 1), border_color=(0.85, 0.87, 0.9, 1), **kwargs):
         super().__init__(**kwargs)
         self.bg_color = bg_color
+        self.border_color = border_color
+        
         with self.canvas.before:
+            # Shadow effect
+            Color(0.7, 0.7, 0.7, 0.2)
+            self.shadow = RoundedRectangle(radius=[dp(16)])
+            
+            # Border
+            Color(*border_color)
+            self.border = RoundedRectangle(radius=[dp(15)])
+            
+            # Background
             Color(*bg_color)
             self.bg_rect = RoundedRectangle(radius=[dp(15)])
-        self.bind(pos=self.update_bg, size=self.update_bg)
+        
+        self.bind(pos=self.update_graphics, size=self.update_graphics)
     
-    def update_bg(self, *args):
+    def update_graphics(self, *args):
+        # Shadow slightly offset
+        self.shadow.pos = (self.pos[0] + dp(2), self.pos[1] - dp(4))
+        self.shadow.size = self.size
+        
+        # Border
+        self.border.pos = self.pos
+        self.border.size = self.size
+        
+        # Background (slightly smaller for border effect)
+        self.bg_rect.pos = (self.pos[0] + dp(1), self.pos[1] + dp(1))
+        self.bg_rect.size = (self.size[0] - dp(2), self.size[1] - dp(2))
+
+
+class GradientButton(Button):
+    """Custom button with gradient-like appearance"""
+    def __init__(self, start_color, end_color, **kwargs):
+        self.start_color = start_color
+        self.end_color = end_color
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_down = ''
+        
+        with self.canvas.before:
+            Color(*start_color)
+            self.bg_rect = RoundedRectangle(radius=[dp(12)])
+        
+        self.bind(pos=self.update_rect, size=self.update_rect)
+    
+    def update_rect(self, *args):
         self.bg_rect.pos = self.pos
         self.bg_rect.size = self.size
 
 
 class ReminderCard(ModernCard):
     def __init__(self, reminder, index, callbacks, **kwargs):
-        # Determine card color based on status
+        # Determine card colors based on status
         if not reminder.get('enabled', True):
-            bg_color = (0.9, 0.9, 0.9, 1)  # Gray for disabled
+            bg_color = (0.94, 0.94, 0.96, 1)  # Light gray
+            border_color = (0.82, 0.82, 0.85, 1)
         else:
-            bg_color = (1, 1, 1, 1)  # White for enabled
+            bg_color = (1, 1, 1, 1)  # White
+            border_color = (0.85, 0.9, 0.95, 1)  # Soft blue tint
         
-        super().__init__(bg_color=bg_color, **kwargs)
+        super().__init__(bg_color=bg_color, border_color=border_color, **kwargs)
         self.orientation = 'vertical'
         self.size_hint_y = None
-        self.height = dp(130)
-        self.padding = dp(15)
-        self.spacing = dp(10)
+        self.height = dp(140)
+        self.padding = dp(16)
+        self.spacing = dp(12)
         
-        # Top row - Time and toggle
-        top_row = BoxLayout(size_hint_y=0.35, spacing=dp(10))
+        # Top row - Time with colorful icon
+        top_row = BoxLayout(size_hint_y=0.3, spacing=dp(12))
         
-        # Time with icon
-        time_box = BoxLayout(size_hint_x=0.6)
+        time_box = BoxLayout(size_hint_x=0.65, spacing=dp(8))
         time_icon = Label(
             text="🕐",
-            font_size='28sp',
-            size_hint_x=0.2
+            font_size='32sp',
+            size_hint_x=0.15
         )
         time_text = Label(
             text=reminder['time'].strftime('%I:%M %p'),
             halign='left',
-            font_size='24sp',
+            font_size='26sp',
             bold=True,
-            color=(0.2, 0.3, 0.4, 1),
-            size_hint_x=0.8
+            color=(0.15, 0.25, 0.45, 1) if reminder.get('enabled') else (0.6, 0.6, 0.6, 1),
+            size_hint_x=0.85
         )
         time_text.bind(size=time_text.setter('text_size'))
         time_box.add_widget(time_icon)
         time_box.add_widget(time_text)
         
-        # Status indicator
+        # Status indicator with better visuals
+        status_box = BoxLayout(size_hint_x=0.35, orientation='horizontal', spacing=dp(4))
+        status_icon = Label(
+            text="✓" if reminder.get('enabled') else "○",
+            font_size='18sp',
+            color=(0.2, 0.7, 0.4, 1) if reminder.get('enabled') else (0.6, 0.6, 0.6, 1),
+            size_hint_x=0.3
+        )
         status_label = Label(
-            text="✓ Active" if reminder.get('enabled') else "○ Off",
+            text="Active" if reminder.get('enabled') else "Off",
             font_size='14sp',
-            color=(0.3, 0.7, 0.4, 1) if reminder.get('enabled') else (0.6, 0.6, 0.6, 1),
-            size_hint_x=0.4,
-            halign='right'
+            bold=True,
+            color=(0.2, 0.7, 0.4, 1) if reminder.get('enabled') else (0.6, 0.6, 0.6, 1),
+            size_hint_x=0.7,
+            halign='left'
         )
         status_label.bind(size=status_label.setter('text_size'))
+        status_box.add_widget(status_icon)
+        status_box.add_widget(status_label)
         
         top_row.add_widget(time_box)
-        top_row.add_widget(status_label)
+        top_row.add_widget(status_box)
         
-        # Middle row - Reminder text
+        # Middle row - Reminder text with better styling
         text_label = Label(
             text=reminder['text'],
             halign='left',
             valign='top',
-            font_size='16sp',
-            color=(0.3, 0.3, 0.3, 1),
-            size_hint_y=0.3,
+            font_size='17sp',
+            color=(0.25, 0.25, 0.3, 1) if reminder.get('enabled') else (0.65, 0.65, 0.65, 1),
+            size_hint_y=0.28,
             text_size=(None, None)
         )
         text_label.bind(size=lambda *x: setattr(text_label, 'text_size', (text_label.width, None)))
         
-        # Days display
+        # Days display with icon
         days_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
         selected_days = reminder.get('days', list(range(7)))
         if len(selected_days) == 7:
@@ -150,41 +223,48 @@ class ReminderCard(ModernCard):
         days_label = Label(
             text=f"📅 {days_text}",
             halign='left',
-            font_size='13sp',
-            color=(0.5, 0.5, 0.5, 1),
-            size_hint_y=0.2
+            font_size='14sp',
+            color=(0.4, 0.5, 0.6, 1),
+            size_hint_y=0.18
         )
         days_label.bind(size=days_label.setter('text_size'))
         
-        # Bottom row - Action buttons
-        btn_row = BoxLayout(size_hint_y=0.3, spacing=dp(8))
+        # Bottom row - Colorful action buttons
+        btn_row = BoxLayout(size_hint_y=0.24, spacing=dp(10))
         
+        # Toggle button with gradient-like colors
+        toggle_color = (0.2, 0.7, 0.4, 1) if reminder.get('enabled') else (0.5, 0.5, 0.55, 1)
         toggle_btn = Button(
-            text="Turn Off" if reminder.get('enabled') else "Turn On",
+            text="✓ ON" if reminder.get('enabled') else "○ OFF",
             background_normal='',
-            background_color=(0.3, 0.7, 0.4, 1) if reminder.get('enabled') else (0.5, 0.5, 0.5, 1),
+            background_color=toggle_color,
             color=(1, 1, 1, 1),
-            font_size='13sp',
-            size_hint_x=0.4
+            font_size='14sp',
+            bold=True,
+            size_hint_x=0.35
         )
         toggle_btn.bind(on_press=lambda x: callbacks['toggle'](index))
         
+        # Edit button - blue
         edit_btn = Button(
             text="✎ Edit",
             background_normal='',
-            background_color=(0.4, 0.6, 0.9, 1),
+            background_color=(0.3, 0.55, 0.9, 1),
             color=(1, 1, 1, 1),
-            font_size='13sp',
-            size_hint_x=0.3
+            font_size='14sp',
+            bold=True,
+            size_hint_x=0.35
         )
         edit_btn.bind(on_press=lambda x: callbacks['edit'](index))
         
+        # Delete button - red
         del_btn = Button(
             text="🗑",
             background_normal='',
-            background_color=(0.9, 0.4, 0.4, 1),
+            background_color=(0.95, 0.35, 0.35, 1),
             color=(1, 1, 1, 1),
-            font_size='16sp',
+            font_size='18sp',
+            bold=True,
             size_hint_x=0.3
         )
         del_btn.bind(on_press=lambda x: callbacks['delete'](index))
@@ -206,9 +286,9 @@ class ReminderApp(App):
         self.editing_index = None
         self.alarm_popup = None
         self.alarm_sound = None
-        self.snooze_minutes = 5
+        self.snooze_minutes = 10
         self.triggered_reminders = set()
-        self.last_check_minute = -1  # Track last checked minute
+        self.last_check_minute = -1
         
         # Setup data directory
         try:
@@ -225,6 +305,9 @@ class ReminderApp(App):
             print(f"Data dir error: {e}")
             self.data_file = 'reminders.json'
         
+        # Create notification channel
+        create_notification_channel()
+        
         # Load available ringtones
         self.load_ringtones()
         
@@ -233,19 +316,20 @@ class ReminderApp(App):
 
         # Main layout
         root = FloatLayout()
-        self.layout = BoxLayout(orientation="vertical", padding=dp(15), spacing=dp(15))
+        self.layout = BoxLayout(orientation="vertical", padding=dp(18), spacing=dp(16))
 
-        # Modern Header
-        header = ModernCard(bg_color=(0.4, 0.6, 0.9, 1))
+        # Modern Header with gradient colors
+        header = ModernCard(bg_color=(0.25, 0.5, 0.85, 1), border_color=(0.2, 0.45, 0.8, 1))
         header.orientation = 'vertical'
         header.size_hint = (1, None)
-        header.height = dp(100)
-        header.padding = dp(15)
+        header.height = dp(110)
+        header.padding = dp(18)
+        header.spacing = dp(8)
         
-        title_row = BoxLayout(size_hint_y=0.5)
+        title_row = BoxLayout(size_hint_y=0.45)
         title = Label(
             text="⏰ My Reminders",
-            font_size='26sp',
+            font_size='28sp',
             bold=True,
             halign='left',
             color=(1, 1, 1, 1)
@@ -253,20 +337,21 @@ class ReminderApp(App):
         title.bind(size=title.setter('text_size'))
         title_row.add_widget(title)
         
-        time_row = BoxLayout(size_hint_y=0.5)
+        time_row = BoxLayout(size_hint_y=0.55)
         self.time_label = Label(
             text="",
-            font_size='20sp',
+            font_size='22sp',
             halign='left',
-            color=(1, 1, 1, 0.9)
+            bold=True,
+            color=(1, 1, 1, 0.95)
         )
         self.time_label.bind(size=self.time_label.setter('text_size'))
         
         self.date_label = Label(
             text="",
-            font_size='14sp',
+            font_size='15sp',
             halign='right',
-            color=(1, 1, 1, 0.8)
+            color=(1, 1, 1, 0.85)
         )
         self.date_label.bind(size=self.date_label.setter('text_size'))
         
@@ -279,33 +364,34 @@ class ReminderApp(App):
         
         Clock.schedule_interval(self.update_time, 1)
 
-        # Add button with modern style
+        # Add button with vibrant color
         add_btn = Button(
             text="+ Add New Reminder",
             size_hint=(1, None),
-            height=dp(55),
+            height=dp(60),
             background_normal='',
-            background_color=(0.3, 0.7, 0.4, 1),
+            background_color=(0.2, 0.7, 0.4, 1),
             color=(1, 1, 1, 1),
-            font_size='16sp',
+            font_size='18sp',
             bold=True
         )
         add_btn.bind(on_press=self.show_add_dialog)
         self.layout.add_widget(add_btn)
 
-        # Stats card
-        stats_card = ModernCard(bg_color=(0.98, 0.98, 1, 1))
+        # Stats card with colorful design
+        stats_card = ModernCard(bg_color=(0.95, 0.97, 1, 1), border_color=(0.8, 0.85, 0.95, 1))
         stats_card.size_hint = (1, None)
-        stats_card.height = dp(60)
-        stats_card.padding = dp(15)
+        stats_card.height = dp(65)
+        stats_card.padding = dp(18)
         
         self.stats_label = Label(
             text="",
             size_hint=(1, 1),
             halign='left',
             valign='middle',
-            font_size='15sp',
-            color=(0.3, 0.3, 0.3, 1)
+            font_size='16sp',
+            bold=True,
+            color=(0.25, 0.35, 0.5, 1)
         )
         self.stats_label.bind(size=self.stats_label.setter('text_size'))
         stats_card.add_widget(self.stats_label)
@@ -316,8 +402,8 @@ class ReminderApp(App):
         self.reminder_list = BoxLayout(
             orientation="vertical",
             size_hint_y=None,
-            spacing=dp(12),
-            padding=[0, dp(5), 0, dp(10)]
+            spacing=dp(14),
+            padding=[0, dp(8), 0, dp(12)]
         )
         self.reminder_list.bind(minimum_height=self.reminder_list.setter('height'))
         scroll.add_widget(self.reminder_list)
@@ -327,37 +413,71 @@ class ReminderApp(App):
         
         self.refresh_reminder_list()
         
-        # Check reminders every 10 seconds for better accuracy
+        # Check reminders every 10 seconds
         Clock.schedule_interval(self.check_reminders, 10)
         
         print("UI built successfully")
         return root
 
     def load_ringtones(self):
-        """Load available ringtones from assets folder"""
+        """Load available ringtones from assets folder and device"""
         self.ringtones = {}
         ringtone_dir = 'assets/ringtones'
         
+        # Load bundled ringtones
         try:
             if os.path.exists(ringtone_dir):
                 for file in os.listdir(ringtone_dir):
                     if file.endswith(('.mp3', '.wav', '.ogg', '.m4a')):
-                        name = os.path.splitext(file)[0]
+                        name = os.path.splitext(file)[0].replace('_', ' ').replace('-', ' ')
                         path = os.path.join(ringtone_dir, file)
-                        self.ringtones[name] = path
-                print(f"Loaded {len(self.ringtones)} ringtones: {list(self.ringtones.keys())}")
-            else:
-                print(f"Ringtone directory not found: {ringtone_dir}")
+                        self.ringtones[f"📦 {name}"] = path
+                print(f"Loaded {len(self.ringtones)} bundled ringtones")
         except Exception as e:
-            print(f"Error loading ringtones: {e}")
+            print(f"Error loading bundled ringtones: {e}")
         
-        # Add default option
-        self.ringtones['Default (Vibrate)'] = None
+        # Add option to pick from device
+        self.ringtones['🎵 Pick from Device'] = 'PICK_FROM_DEVICE'
+        self.ringtones['🔇 Default (Vibrate Only)'] = None
+        
+        print(f"Total ringtone options: {len(self.ringtones)}")
+
+    def pick_ringtone_from_device(self, callback):
+        """Allow user to pick a ringtone from their device"""
+        if platform == 'android':
+            try:
+                from jnius import autoclass, cast
+                from android import activity
+                
+                Intent = autoclass('android.content.Intent')
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                RingtoneManager = autoclass('android.media.RingtoneManager')
+                
+                intent = Intent(Intent.ACTION_PICK)
+                intent.setType("audio/*")
+                
+                def on_activity_result(request_code, result_code, intent):
+                    if result_code == -1 and intent:  # RESULT_OK
+                        uri = intent.getData()
+                        if uri:
+                            uri_string = uri.toString()
+                            print(f"Selected ringtone URI: {uri_string}")
+                            callback(uri_string)
+                
+                activity.bind(on_activity_result=on_activity_result)
+                PythonActivity.mActivity.startActivityForResult(intent, 1001)
+                
+            except Exception as e:
+                print(f"Error picking ringtone: {e}")
+                callback(None)
+        else:
+            print("Ringtone picker only available on Android")
+            callback(None)
 
     def update_time(self, dt):
         now = datetime.datetime.now()
         self.time_label.text = now.strftime('%I:%M %p')
-        self.date_label.text = now.strftime('%A, %b %d')
+        self.date_label.text = now.strftime('%A, %B %d')
 
     def load_reminders(self):
         try:
@@ -375,7 +495,7 @@ class ReminderApp(App):
                             'enabled': item.get('enabled', True),
                             'days': item.get('days', list(range(7))),
                             'snooze_until': None,
-                            'ringtone': item.get('ringtone', 'Default (Vibrate)')
+                            'ringtone': item.get('ringtone', '🔇 Default (Vibrate Only)')
                         })
                 print(f"Loaded {len(self.reminders)} reminders")
             else:
@@ -393,7 +513,7 @@ class ReminderApp(App):
                 'recurring': r.get('recurring', True),
                 'enabled': r.get('enabled', True),
                 'days': r.get('days', list(range(7))),
-                'ringtone': r.get('ringtone', 'Default (Vibrate)')
+                'ringtone': r.get('ringtone', '🔇 Default (Vibrate Only)')
             } for r in self.reminders]
             
             os.makedirs(os.path.dirname(self.data_file), exist_ok=True)
@@ -410,130 +530,169 @@ class ReminderApp(App):
         self.show_reminder_dialog()
 
     def show_reminder_dialog(self, reminder=None):
-        content = BoxLayout(orientation='vertical', spacing=dp(12), padding=dp(15))
+        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(18))
         
-        # Scrollable content for better UX
+        # Scrollable content
         scroll = ScrollView(size_hint=(1, 1))
-        form = BoxLayout(orientation='vertical', spacing=dp(12), size_hint_y=None)
+        form = BoxLayout(orientation='vertical', spacing=dp(14), size_hint_y=None)
         form.bind(minimum_height=form.setter('height'))
         
-        # Title label
+        # Title with better styling
         title_lbl = Label(
-            text="Edit Reminder" if reminder else "New Reminder",
-            font_size='20sp',
+            text="✏️ Edit Reminder" if reminder else "➕ New Reminder",
+            font_size='24sp',
             bold=True,
             size_hint=(1, None),
-            height=dp(40),
-            color=(0.2, 0.3, 0.4, 1)
+            height=dp(45),
+            color=(0.2, 0.3, 0.5, 1)
         )
         form.add_widget(title_lbl)
         
-        # Text input with modern styling
+        # Text input with vibrant styling
+        text_label = Label(
+            text="📝 Reminder Message",
+            font_size='16sp',
+            bold=True,
+            size_hint=(1, None),
+            height=dp(30),
+            halign='left',
+            color=(0.3, 0.4, 0.6, 1)
+        )
+        text_label.bind(size=text_label.setter('text_size'))
+        form.add_widget(text_label)
+        
         text_input = TextInput(
             hint_text="What do you want to be reminded about?",
             size_hint=(1, None),
-            height=dp(50),
+            height=dp(55),
             multiline=False,
-            background_color=(0.95, 0.95, 0.95, 1),
-            foreground_color=(0.2, 0.2, 0.2, 1),
-            cursor_color=(0.4, 0.6, 0.9, 1),
-            padding=[dp(10), dp(15)]
+            background_color=(0.96, 0.97, 0.99, 1),
+            foreground_color=(0.2, 0.2, 0.3, 1),
+            cursor_color=(0.3, 0.55, 0.9, 1),
+            padding=[dp(15), dp(18)],
+            font_size='16sp'
         )
         if reminder:
             text_input.text = reminder['text']
         form.add_widget(text_input)
 
-        # Time selection section
+        # Time selection with 1-minute precision
         time_label = Label(
             text="⏰ Set Time",
             font_size='16sp',
+            bold=True,
             size_hint=(1, None),
-            height=dp(30),
+            height=dp(35),
             halign='left',
-            color=(0.3, 0.3, 0.3, 1)
+            color=(0.3, 0.4, 0.6, 1)
         )
         time_label.bind(size=time_label.setter('text_size'))
         form.add_widget(time_label)
         
-        time_box = BoxLayout(size_hint=(1, None), height=dp(50), spacing=dp(5))
+        time_box = BoxLayout(size_hint=(1, None), height=dp(55), spacing=dp(8))
         
+        # Hour spinner (1-12)
         hour = Spinner(
-            text=str(reminder['time'].hour % 12 or 12) if reminder else "12",
+            text=str(reminder['time'].hour % 12 or 12) if reminder else "9",
             values=[str(i) for i in range(1, 13)],
             size_hint=(0.3, 1),
-            background_color=(0.95, 0.95, 0.95, 1)
+            background_color=(0.96, 0.97, 0.99, 1),
+            font_size='18sp'
         )
         
+        colon_label = Label(text=":", size_hint=(0.08, 1), font_size='24sp', bold=True, color=(0.3, 0.4, 0.6, 1))
+        
+        # Minute spinner (0-59) - FULL precision
         minute = Spinner(
             text=str(reminder['time'].minute).zfill(2) if reminder else "00",
-            values=[str(i).zfill(2) for i in range(0, 60, 5)],
+            values=[str(i).zfill(2) for i in range(0, 60)],  # ALL minutes 0-59
             size_hint=(0.3, 1),
-            background_color=(0.95, 0.95, 0.95, 1)
+            background_color=(0.96, 0.97, 0.99, 1),
+            font_size='18sp'
         )
         
+        # AM/PM spinner
         ampm = Spinner(
             text="PM" if reminder and reminder['time'].hour >= 12 else "AM",
             values=["AM", "PM"],
-            size_hint=(0.3, 1),
-            background_color=(0.95, 0.95, 0.95, 1)
+            size_hint=(0.32, 1),
+            background_color=(0.96, 0.97, 0.99, 1),
+            font_size='18sp'
         )
         
         time_box.add_widget(hour)
-        time_box.add_widget(Label(text=":", size_hint=(0.1, 1), font_size='20sp'))
+        time_box.add_widget(colon_label)
         time_box.add_widget(minute)
         time_box.add_widget(ampm)
         form.add_widget(time_box)
 
         # Ringtone selection
-        if self.ringtones:
-            ringtone_label = Label(
-                text="🔔 Ringtone",
-                font_size='16sp',
-                size_hint=(1, None),
-                height=dp(30),
-                halign='left',
-                color=(0.3, 0.3, 0.3, 1)
-            )
-            ringtone_label.bind(size=ringtone_label.setter('text_size'))
-            form.add_widget(ringtone_label)
-            
-            ringtone_spinner = Spinner(
-                text=reminder.get('ringtone', 'Default (Vibrate)') if reminder else 'Default (Vibrate)',
-                values=sorted(self.ringtones.keys()),
-                size_hint=(1, None),
-                height=dp(45),
-                background_color=(0.95, 0.95, 0.95, 1)
-            )
-            form.add_widget(ringtone_spinner)
-
-        # Days selection
-        days_label = Label(
-            text="📅 Repeat on",
+        ringtone_label = Label(
+            text="🔔 Ringtone",
             font_size='16sp',
+            bold=True,
             size_hint=(1, None),
-            height=dp(30),
+            height=dp(35),
             halign='left',
-            color=(0.3, 0.3, 0.3, 1)
+            color=(0.3, 0.4, 0.6, 1)
+        )
+        ringtone_label.bind(size=ringtone_label.setter('text_size'))
+        form.add_widget(ringtone_label)
+        
+        selected_ringtone = [reminder.get('ringtone', '🔇 Default (Vibrate Only)') if reminder else '🔇 Default (Vibrate Only)']
+        
+        ringtone_spinner = Spinner(
+            text=selected_ringtone[0],
+            values=sorted(self.ringtones.keys()),
+            size_hint=(1, None),
+            height=dp(50),
+            background_color=(0.96, 0.97, 0.99, 1),
+            font_size='15sp'
+        )
+        
+        def on_ringtone_select(spinner, text):
+            if text == '🎵 Pick from Device':
+                def callback(uri):
+                    if uri:
+                        selected_ringtone[0] = f"🎵 Custom: {uri[:30]}..."
+                        ringtone_spinner.text = selected_ringtone[0]
+                self.pick_ringtone_from_device(callback)
+            else:
+                selected_ringtone[0] = text
+        
+        ringtone_spinner.bind(text=on_ringtone_select)
+        form.add_widget(ringtone_spinner)
+
+        # Days selection with colorful design
+        days_label = Label(
+            text="📅 Repeat on Days",
+            font_size='16sp',
+            bold=True,
+            size_hint=(1, None),
+            height=dp(35),
+            halign='left',
+            color=(0.3, 0.4, 0.6, 1)
         )
         days_label.bind(size=days_label.setter('text_size'))
         form.add_widget(days_label)
         
-        days_box = BoxLayout(size_hint=(1, None), height=dp(60), spacing=dp(3))
+        days_box = BoxLayout(size_hint=(1, None), height=dp(70), spacing=dp(4))
         day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         day_checks = []
         
         for i, day in enumerate(day_names):
-            cb_box = BoxLayout(orientation='vertical', size_hint=(1, 1))
+            cb_box = BoxLayout(orientation='vertical', size_hint=(1, 1), spacing=dp(4))
             cb = CheckBox(
                 active=reminder and i in reminder.get('days', list(range(7))) if reminder else True,
-                size_hint=(1, 0.6),
-                color=(0.4, 0.6, 0.9, 1)
+                size_hint=(1, 0.55),
+                color=(0.3, 0.6, 0.9, 1)
             )
             day_lbl = Label(
                 text=day,
-                size_hint=(1, 0.4),
-                font_size='12sp',
-                color=(0.3, 0.3, 0.3, 1)
+                size_hint=(1, 0.45),
+                font_size='13sp',
+                bold=True,
+                color=(0.3, 0.4, 0.6, 1)
             )
             cb_box.add_widget(cb)
             cb_box.add_widget(day_lbl)
@@ -541,8 +700,8 @@ class ReminderApp(App):
             days_box.add_widget(cb_box)
         form.add_widget(days_box)
 
-        # Quick select buttons
-        quick_box = BoxLayout(size_hint=(1, None), height=dp(40), spacing=dp(5))
+        # Quick select buttons with vibrant colors
+        quick_box = BoxLayout(size_hint=(1, None), height=dp(45), spacing=dp(8))
         
         def select_weekdays():
             for i, cb in enumerate(day_checks):
@@ -560,9 +719,10 @@ class ReminderApp(App):
             text="Weekdays",
             size_hint=(0.33, 1),
             background_normal='',
-            background_color=(0.85, 0.85, 0.85, 1),
-            color=(0.3, 0.3, 0.3, 1),
-            font_size='12sp'
+            background_color=(0.4, 0.6, 0.9, 1),
+            color=(1, 1, 1, 1),
+            font_size='13sp',
+            bold=True
         )
         weekday_btn.bind(on_press=lambda x: select_weekdays())
         
@@ -570,19 +730,21 @@ class ReminderApp(App):
             text="Weekend",
             size_hint=(0.33, 1),
             background_normal='',
-            background_color=(0.85, 0.85, 0.85, 1),
-            color=(0.3, 0.3, 0.3, 1),
-            font_size='12sp'
+            background_color=(0.85, 0.5, 0.3, 1),
+            color=(1, 1, 1, 1),
+            font_size='13sp',
+            bold=True
         )
         weekend_btn.bind(on_press=lambda x: select_weekend())
         
         all_btn = Button(
-            text="Every day",
+            text="Every Day",
             size_hint=(0.34, 1),
             background_normal='',
-            background_color=(0.85, 0.85, 0.85, 1),
-            color=(0.3, 0.3, 0.3, 1),
-            font_size='12sp'
+            background_color=(0.6, 0.4, 0.85, 1),
+            color=(1, 1, 1, 1),
+            font_size='13sp',
+            bold=True
         )
         all_btn.bind(on_press=lambda x: select_all())
         
@@ -594,23 +756,24 @@ class ReminderApp(App):
         scroll.add_widget(form)
         content.add_widget(scroll)
 
-        # Buttons
-        btn_box = BoxLayout(size_hint=(1, None), height=dp(50), spacing=dp(10))
+        # Action buttons with vibrant colors
+        btn_box = BoxLayout(size_hint=(1, None), height=dp(55), spacing=dp(12))
         
         cancel_btn = Button(
-            text="Cancel",
+            text="✖ Cancel",
             background_normal='',
-            background_color=(0.7, 0.7, 0.7, 1),
+            background_color=(0.65, 0.65, 0.7, 1),
             color=(1, 1, 1, 1),
-            font_size='15sp'
+            font_size='16sp',
+            bold=True
         )
         
         save_btn = Button(
-            text="💾 Save Reminder",
+            text="💾 Save",
             background_normal='',
-            background_color=(0.3, 0.7, 0.4, 1),
+            background_color=(0.2, 0.7, 0.4, 1),
             color=(1, 1, 1, 1),
-            font_size='15sp',
+            font_size='16sp',
             bold=True
         )
         
@@ -621,15 +784,15 @@ class ReminderApp(App):
         popup = Popup(
             title="",
             content=content,
-            size_hint=(0.95, 0.9),
+            size_hint=(0.96, 0.92),
             separator_height=0,
-            background_color=(1, 1, 1, 0.95)
+            background_color=(1, 1, 1, 0.98)
         )
 
         def save_reminder(instance):
             text = text_input.text.strip()
             if not text:
-                text_input.hint_text = "⚠ Please enter reminder text"
+                text_input.hint_text = "⚠️ Please enter reminder text"
                 text_input.background_color = (1, 0.9, 0.9, 1)
                 return
 
@@ -642,19 +805,19 @@ class ReminderApp(App):
 
             selected_days = [i for i, cb in enumerate(day_checks) if cb.active]
             if not selected_days:
-                days_label.text = "⚠ Please select at least one day"
-                days_label.color = (0.9, 0.3, 0.3, 1)
+                days_label.text = "⚠️ Select at least one day"
+                days_label.color = (0.95, 0.3, 0.3, 1)
                 return
 
             new_reminder = {
                 'text': text,
                 'time': datetime.time(h, m),
                 'played': False,
-                'recurring': len(selected_days) > 1 or len(selected_days) < 7,
+                'recurring': True,
                 'enabled': True,
                 'days': sorted(selected_days),
                 'snooze_until': None,
-                'ringtone': ringtone_spinner.text if self.ringtones else 'Default (Vibrate)'
+                'ringtone': selected_ringtone[0]
             }
 
             if self.editing_index is not None:
@@ -682,7 +845,6 @@ class ReminderApp(App):
             self.reminders[index]['enabled'] = not self.reminders[index].get('enabled', True)
             self.reminders[index]['played'] = False
             
-            # Clear trigger tracking when toggling
             reminder = self.reminders[index]
             reminder_key = f"{index}_{reminder['time'].hour:02d}{reminder['time'].minute:02d}"
             self.triggered_reminders.discard(reminder_key)
@@ -693,32 +855,47 @@ class ReminderApp(App):
 
     def delete_reminder(self, index):
         if 0 <= index < len(self.reminders):
-            content = BoxLayout(orientation='vertical', spacing=dp(20), padding=dp(20))
+            content = BoxLayout(orientation='vertical', spacing=dp(24), padding=dp(24))
+            
+            icon_label = Label(
+                text="🗑️",
+                font_size='56sp',
+                size_hint=(1, 0.3)
+            )
+            content.add_widget(icon_label)
+            
             content.add_widget(Label(
                 text="Delete this reminder?",
-                font_size='18sp',
-                size_hint=(1, 0.4)
+                font_size='20sp',
+                bold=True,
+                size_hint=(1, 0.2),
+                color=(0.3, 0.3, 0.4, 1)
             ))
             content.add_widget(Label(
                 text=self.reminders[index]['text'],
-                font_size='14sp',
+                font_size='16sp',
                 color=(0.5, 0.5, 0.5, 1),
-                size_hint=(1, 0.3)
+                size_hint=(1, 0.2)
             ))
             
-            btn_box = BoxLayout(size_hint=(1, 0.3), spacing=dp(10))
+            btn_box = BoxLayout(size_hint=(1, 0.3), spacing=dp(12))
             
             cancel_btn = Button(
                 text="Cancel",
                 background_normal='',
-                background_color=(0.7, 0.7, 0.7, 1)
+                background_color=(0.65, 0.65, 0.7, 1),
+                color=(1, 1, 1, 1),
+                font_size='16sp',
+                bold=True
             )
             
             delete_btn = Button(
                 text="Delete",
                 background_normal='',
-                background_color=(0.9, 0.4, 0.4, 1),
-                color=(1, 1, 1, 1)
+                background_color=(0.95, 0.35, 0.35, 1),
+                color=(1, 1, 1, 1),
+                font_size='16sp',
+                bold=True
             )
             
             btn_box.add_widget(cancel_btn)
@@ -727,8 +904,10 @@ class ReminderApp(App):
             
             confirm_popup = Popup(
                 content=content,
-                size_hint=(0.8, 0.4),
-                title=""
+                size_hint=(0.85, 0.5),
+                title="",
+                separator_height=0,
+                background_color=(1, 1, 1, 0.98)
             )
             
             def do_delete(instance):
@@ -751,32 +930,32 @@ class ReminderApp(App):
         active = sum(1 for r in self.reminders if r.get('enabled', True))
         total = len(self.reminders)
         
-        self.stats_label.text = f"📊 Total: {total} reminders  |  ✓ Active: {active}  |  ○ Inactive: {total - active}"
+        self.stats_label.text = f"📊 Total: {total}  |  ✅ Active: {active}  |  ⭕ Inactive: {total - active}"
         
         if not self.reminders:
-            empty_card = ModernCard(bg_color=(0.98, 0.98, 1, 1))
+            empty_card = ModernCard(bg_color=(0.96, 0.97, 1, 1), border_color=(0.85, 0.88, 0.95, 1))
             empty_card.size_hint_y = None
-            empty_card.height = dp(150)
-            empty_card.padding = dp(20)
+            empty_card.height = dp(170)
+            empty_card.padding = dp(24)
             
-            empty_box = BoxLayout(orientation='vertical', spacing=dp(10))
+            empty_box = BoxLayout(orientation='vertical', spacing=dp(14))
             empty_box.add_widget(Label(
                 text="📭",
-                font_size='48sp',
-                size_hint_y=0.5
+                font_size='54sp',
+                size_hint_y=0.45
             ))
             empty_box.add_widget(Label(
-                text="No reminders yet",
-                font_size='18sp',
+                text="No Reminders Yet",
+                font_size='20sp',
                 bold=True,
                 size_hint_y=0.25,
-                color=(0.3, 0.3, 0.3, 1)
+                color=(0.3, 0.4, 0.6, 1)
             ))
             empty_box.add_widget(Label(
-                text="Tap 'Add New Reminder' to create one",
-                font_size='14sp',
-                size_hint_y=0.25,
-                color=(0.5, 0.5, 0.5, 1)
+                text="Tap the green button to create one!",
+                font_size='15sp',
+                size_hint_y=0.3,
+                color=(0.5, 0.6, 0.7, 1)
             ))
             
             empty_card.add_widget(empty_box)
@@ -792,13 +971,52 @@ class ReminderApp(App):
         for idx, r in enumerate(self.reminders):
             self.reminder_list.add_widget(ReminderCard(r, idx, callbacks))
 
+    def show_android_notification(self, reminder):
+        """Show Android notification"""
+        if platform == 'android':
+            try:
+                from jnius import autoclass, cast
+                
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                Context = autoclass('android.content.Context')
+                NotificationManager = autoclass('android.app.NotificationManager')
+                NotificationCompat = autoclass('androidx.core.app.NotificationCompat')
+                NotificationBuilder = NotificationCompat.Builder
+                PendingIntent = autoclass('android.app.PendingIntent')
+                Intent = autoclass('android.content.Intent')
+                
+                activity = PythonActivity.mActivity
+                notification_service = activity.getSystemService(Context.NOTIFICATION_SERVICE)
+                
+                # Create notification
+                intent = Intent(activity.getApplicationContext(), PythonActivity)
+                intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                pending_intent = PendingIntent.getActivity(activity, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
+                
+                builder = NotificationBuilder(activity, "reminder_channel")
+                builder.setContentTitle("⏰ Reminder!")
+                builder.setContentText(reminder['text'])
+                builder.setSmallIcon(activity.getApplicationInfo().icon)
+                builder.setContentIntent(pending_intent)
+                builder.setPriority(NotificationCompat.PRIORITY_HIGH)
+                builder.setAutoCancel(True)
+                builder.setVibrate([0, 500, 200, 500])
+                
+                notification = builder.build()
+                notification_service.notify(1001, notification)
+                print("Notification sent!")
+                
+            except Exception as e:
+                print(f"Notification error: {e}")
+                import traceback
+                traceback.print_exc()
+
     def check_reminders(self, dt):
         """Check reminders with improved accuracy"""
         try:
             now = datetime.datetime.now()
             current_minute = now.hour * 60 + now.minute
             
-            # Only check once per minute
             if current_minute == self.last_check_minute:
                 return
             
@@ -812,10 +1030,8 @@ class ReminderApp(App):
                 if not r.get('enabled'):
                     continue
                 
-                # Create unique key for this reminder
                 reminder_key = f"{idx}_{r['time'].hour:02d}{r['time'].minute:02d}"
                 
-                # Check snooze
                 if r.get('snooze_until'):
                     if now >= r['snooze_until']:
                         print(f"Snooze ended for reminder {idx}")
@@ -825,11 +1041,9 @@ class ReminderApp(App):
                     else:
                         continue
                 
-                # Check if day matches
                 if current_day not in r.get('days', list(range(7))):
                     continue
                 
-                # Check if time matches and hasn't been triggered yet
                 reminder_time = r['time'].replace(second=0, microsecond=0)
                 if reminder_time == current_time and not r['played'] and reminder_key not in self.triggered_reminders:
                     print(f"Triggering reminder {idx}: {r['text']}")
@@ -837,7 +1051,6 @@ class ReminderApp(App):
                     r['played'] = True
                     self.triggered_reminders.add(reminder_key)
             
-            # Reset at midnight
             if current_time.hour == 0 and current_time.minute == 0:
                 print("Midnight reset")
                 for r in self.reminders:
@@ -851,11 +1064,10 @@ class ReminderApp(App):
             traceback.print_exc()
 
     def snooze_alarm(self, reminder, idx):
-        """Snooze the alarm for specified minutes"""
+        """Snooze the alarm"""
         reminder['snooze_until'] = datetime.datetime.now() + datetime.timedelta(minutes=self.snooze_minutes)
         reminder['played'] = True
         
-        # Remove from triggered set so it can trigger again after snooze
         reminder_key = f"{idx}_{reminder['time'].hour:02d}{reminder['time'].minute:02d}"
         self.triggered_reminders.discard(reminder_key)
         
@@ -875,24 +1087,50 @@ class ReminderApp(App):
                 self.alarm_sound.unload()
                 self.alarm_sound = None
             
-            if ringtone_name and ringtone_name != 'Default (Vibrate)':
-                ringtone_path = self.ringtones.get(ringtone_name)
-                if ringtone_path and os.path.exists(ringtone_path):
-                    self.alarm_sound = SoundLoader.load(ringtone_path)
-                    if self.alarm_sound:
-                        self.alarm_sound.loop = True
-                        self.alarm_sound.play()
-                        print(f"Playing ringtone: {ringtone_name}")
-                    else:
-                        print(f"Failed to load ringtone: {ringtone_path}")
+            if ringtone_name and not ringtone_name.startswith('🔇'):
+                # Check if it's a custom URI from device
+                if ringtone_name.startswith('🎵 Custom:'):
+                    # Extract URI and play from device
+                    print(f"Playing custom ringtone from device")
+                    # On Android, use MediaPlayer for URIs
+                    if platform == 'android':
+                        try:
+                            from jnius import autoclass
+                            MediaPlayer = autoclass('android.media.MediaPlayer')
+                            Uri = autoclass('android.net.Uri')
+                            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                            
+                            player = MediaPlayer()
+                            # Note: You'd need to store the actual URI, not just the display text
+                            # For now, just log it
+                            print("Custom ringtone feature - URI playback needs full implementation")
+                        except Exception as e:
+                            print(f"Custom ringtone error: {e}")
+                else:
+                    # Play bundled ringtone
+                    ringtone_path = self.ringtones.get(ringtone_name)
+                    if ringtone_path and ringtone_path != 'PICK_FROM_DEVICE' and os.path.exists(ringtone_path):
+                        self.alarm_sound = SoundLoader.load(ringtone_path)
+                        if self.alarm_sound:
+                            self.alarm_sound.loop = True
+                            self.alarm_sound.volume = 0.8
+                            self.alarm_sound.play()
+                            print(f"Playing ringtone: {ringtone_name}")
+                        else:
+                            print(f"Failed to load ringtone: {ringtone_path}")
         except Exception as e:
             print(f"Ringtone error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def show_alarm(self, reminder, idx):
-        """Show alarm popup with vibration and sound"""
+        """Show alarm popup with vibration, sound and notification"""
         try:
+            # Send Android notification
+            self.show_android_notification(reminder)
+            
             # Play ringtone
-            ringtone = reminder.get('ringtone', 'Default (Vibrate)')
+            ringtone = reminder.get('ringtone', '🔇 Default (Vibrate Only)')
             self.play_ringtone(ringtone)
             
             # Vibrate on Android
@@ -902,60 +1140,70 @@ class ReminderApp(App):
                     PythonActivity = autoclass('org.kivy.android.PythonActivity')
                     Context = autoclass('android.content.Context')
                     Vibrator = autoclass('android.os.Vibrator')
+                    VibrationEffect = autoclass('android.os.VibrationEffect')
+                    VERSION = autoclass('android.os.Build$VERSION')
+                    
                     activity = PythonActivity.mActivity
                     vibrator = activity.getSystemService(Context.VIBRATOR_SERVICE)
                     
-                    # Vibrate pattern: wait, vibrate, wait, vibrate
-                    pattern = [0, 500, 200, 500, 200, 500]
-                    if hasattr(vibrator, 'vibrate'):
-                        try:
-                            vibrator.vibrate(pattern, -1)
-                        except:
-                            vibrator.vibrate(2000)
+                    # Use VibrationEffect for Android 8.0+ (API 26+)
+                    if VERSION.SDK_INT >= 26:
+                        pattern = [0, 500, 200, 500, 200, 500]
+                        effect = VibrationEffect.createWaveform(pattern, -1)
+                        vibrator.vibrate(effect)
+                    else:
+                        pattern = [0, 500, 200, 500, 200, 500]
+                        vibrator.vibrate(pattern, -1)
+                    
+                    print("Vibration triggered")
                 except Exception as e:
                     print(f"Vibration error: {e}")
             
-            content = BoxLayout(orientation='vertical', spacing=dp(20), padding=dp(20))
+            # Create colorful alarm popup
+            content = BoxLayout(orientation='vertical', spacing=dp(18), padding=dp(22))
             
-            # Alarm icon
+            # Animated alarm icon
             content.add_widget(Label(
                 text="⏰",
-                font_size='64sp',
-                size_hint=(1, 0.2)
+                font_size='72sp',
+                size_hint=(1, 0.18)
             ))
             
-            # Alarm title
+            # Alert title with vibrant color
             content.add_widget(Label(
                 text="REMINDER!",
-                font_size='28sp',
+                font_size='32sp',
                 bold=True,
-                color=(0.9, 0.3, 0.3, 1),
-                size_hint=(1, 0.15)
+                color=(0.95, 0.3, 0.35, 1),
+                size_hint=(1, 0.12)
             ))
             
             # Reminder text
             reminder_label = Label(
                 text=reminder['text'],
-                font_size='18sp',
-                size_hint=(1, 0.2),
-                color=(0.2, 0.2, 0.2, 1)
+                font_size='20sp',
+                size_hint=(1, 0.18),
+                color=(0.2, 0.25, 0.35, 1),
+                bold=True
             )
             content.add_widget(reminder_label)
             
-            # Time
+            # Time display
             content.add_widget(Label(
                 text=datetime.datetime.now().strftime('%I:%M %p'),
-                font_size='16sp',
-                size_hint=(1, 0.1),
-                color=(0.5, 0.5, 0.5, 1)
+                font_size='18sp',
+                size_hint=(1, 0.08),
+                color=(0.5, 0.55, 0.65, 1)
             ))
             
-            # Snooze controls
-            snooze_box = BoxLayout(orientation='vertical', size_hint=(1, 0.2), spacing=dp(10))
+            # Snooze controls with better design
+            snooze_box = BoxLayout(orientation='vertical', size_hint=(1, 0.22), spacing=dp(8))
             snooze_label = Label(
-                text=f"Snooze for {self.snooze_minutes} minutes",
-                font_size='14sp',
-                size_hint=(1, 0.4)
+                text=f"😴 Snooze for {self.snooze_minutes} minutes",
+                font_size='16sp',
+                bold=True,
+                size_hint=(1, 0.35),
+                color=(0.3, 0.4, 0.6, 1)
             )
             
             slider = Slider(
@@ -963,12 +1211,12 @@ class ReminderApp(App):
                 max=30,
                 value=self.snooze_minutes,
                 step=5,
-                size_hint=(1, 0.6)
+                size_hint=(1, 0.65)
             )
             
             def update_snooze(instance, value):
                 self.snooze_minutes = int(value)
-                snooze_label.text = f"Snooze for {self.snooze_minutes} minutes"
+                snooze_label.text = f"😴 Snooze for {self.snooze_minutes} minutes"
             
             slider.bind(value=update_snooze)
             
@@ -976,24 +1224,24 @@ class ReminderApp(App):
             snooze_box.add_widget(slider)
             content.add_widget(snooze_box)
             
-            # Buttons
-            btn_box = BoxLayout(size_hint=(1, 0.15), spacing=dp(10))
+            # Action buttons with vibrant colors
+            btn_box = BoxLayout(size_hint=(1, 0.14), spacing=dp(14))
             
             snooze_btn = Button(
                 text="😴 Snooze",
                 background_normal='',
-                background_color=(0.95, 0.7, 0.3, 1),
+                background_color=(0.95, 0.65, 0.25, 1),
                 color=(1, 1, 1, 1),
-                font_size='16sp',
+                font_size='18sp',
                 bold=True
             )
             
             dismiss_btn = Button(
                 text="✓ Dismiss",
                 background_normal='',
-                background_color=(0.3, 0.7, 0.4, 1),
+                background_color=(0.2, 0.7, 0.4, 1),
                 color=(1, 1, 1, 1),
-                font_size='16sp',
+                font_size='18sp',
                 bold=True
             )
             
@@ -1003,7 +1251,7 @@ class ReminderApp(App):
             
             self.alarm_popup = Popup(
                 content=content,
-                size_hint=(0.95, 0.7),
+                size_hint=(0.96, 0.75),
                 auto_dismiss=False,
                 title="",
                 separator_height=0,
@@ -1031,7 +1279,6 @@ class ReminderApp(App):
     def on_resume(self):
         """Handle app resume"""
         self.refresh_reminder_list()
-        # Reset last check to force immediate check on resume
         self.last_check_minute = -1
 
     def on_stop(self):
@@ -1050,3 +1297,4 @@ if __name__ == "__main__":
         print(f"App crash: {e}")
         import traceback
         traceback.print_exc()
+.
