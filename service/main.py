@@ -6,7 +6,7 @@ import os
 import json
 import datetime
 import time
-from jnius import autoclass, cast
+from jnius import autoclass
 
 # Android classes
 PythonService = autoclass('org.kivy.android.PythonService')
@@ -24,7 +24,6 @@ AudioManager = autoclass('android.media.AudioManager')
 Uri = autoclass('android.net.Uri')
 RingtoneManager = autoclass('android.media.RingtoneManager')
 PowerManager = autoclass('android.os.PowerManager')
-KeyguardManager = autoclass('android.app.KeyguardManager')
 
 print("Service starting...")
 
@@ -54,7 +53,8 @@ class ReminderService:
                             'minute': m,
                             'enabled': item.get('enabled', True),
                             'days': item.get('days', list(range(7))),
-                            'ringtone': item.get('ringtone', '🔔 Default System Sound')
+                            'ringtone': item.get('ringtone', 'Default System Sound'),
+                            'ringtone_uri': item.get('ringtone_uri', None)
                         })
                     print(f"Loaded {len(reminders)} reminders")
                     return reminders
@@ -67,7 +67,6 @@ class ReminderService:
         try:
             notification_service = self.service.getSystemService(Context.NOTIFICATION_SERVICE)
             
-            # Create intent to open app
             intent = Intent(self.service.getApplicationContext(), PythonActivity)
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
             pending_intent = PendingIntent.getActivity(
@@ -75,9 +74,8 @@ class ReminderService:
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             )
             
-            # Build notification
             builder = NotificationCompat.Builder(self.service, "reminder_channel")
-            builder.setContentTitle("⏰ Reminder!")
+            builder.setContentTitle("Reminder!")
             builder.setContentText(reminder['text'])
             builder.setSmallIcon(self.service.getApplicationInfo().icon)
             builder.setContentIntent(pending_intent)
@@ -86,12 +84,15 @@ class ReminderService:
             builder.setAutoCancel(True)
             builder.setVibrate([0, 500, 200, 500])
             
-            # Add sound
-            if not reminder.get('ringtone', '').startswith('🔇'):
-                default_sound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                builder.setSound(default_sound)
+            # Add sound based on user preference
+            if reminder.get('ringtone') != 'Vibrate Only':
+                ringtone_uri = reminder.get('ringtone_uri')
+                if ringtone_uri and ringtone_uri != 'SYSTEM_DEFAULT':
+                    sound_uri = Uri.parse(ringtone_uri)
+                else:
+                    sound_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                builder.setSound(sound_uri)
             
-            # Show notification
             notification = builder.build()
             notification.flags |= notification.FLAG_INSISTENT | notification.FLAG_AUTO_CANCEL
             notification_service.notify(1001, notification)
@@ -128,16 +129,22 @@ class ReminderService:
                     pass
                 self.media_player = None
             
-            ringtone_name = reminder.get('ringtone', '🔔 Default System Sound')
+            ringtone_name = reminder.get('ringtone', 'Default System Sound')
             
-            if not ringtone_name.startswith('🔇'):
+            if ringtone_name != 'Vibrate Only':
                 self.media_player = MediaPlayer()
                 self.media_player.setAudioStreamType(AudioManager.STREAM_ALARM)
                 
-                # Use default alarm sound
-                default_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ringtone_uri = reminder.get('ringtone_uri')
+                if ringtone_uri and ringtone_uri != 'SYSTEM_DEFAULT':
+                    # Play custom user-selected ringtone
+                    uri = Uri.parse(ringtone_uri)
+                    self.media_player.setDataSource(self.service, uri)
+                else:
+                    # Use default alarm sound
+                    default_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    self.media_player.setDataSource(self.service, default_uri)
                 
-                self.media_player.setDataSource(self.service, default_uri)
                 self.media_player.setLooping(True)
                 self.media_player.prepare()
                 self.media_player.start()
@@ -150,7 +157,7 @@ class ReminderService:
             traceback.print_exc()
     
     def wake_screen(self):
-        """Wake up the screen and show over lockscreen"""
+        """Wake up the screen"""
         try:
             power_manager = self.service.getSystemService(Context.POWER_SERVICE)
             wake_lock = power_manager.newWakeLock(
@@ -160,7 +167,6 @@ class ReminderService:
             )
             wake_lock.acquire(10000)  # 10 seconds
             
-            # Try to open app over lockscreen
             intent = Intent(self.service.getApplicationContext(), PythonActivity)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | 
                           Intent.FLAG_ACTIVITY_CLEAR_TOP |
@@ -178,7 +184,6 @@ class ReminderService:
             now = datetime.datetime.now()
             current_minute = now.hour * 60 + now.minute
             
-            # Only check once per minute
             if current_minute == self.last_check_minute:
                 return
             
@@ -193,34 +198,22 @@ class ReminderService:
                 if not r.get('enabled'):
                     continue
                 
-                # Check if this reminder is for today
                 if current_day not in r.get('days', list(range(7))):
                     continue
                 
-                # Check if time matches
                 if r['hour'] == now.hour and r['minute'] == now.minute:
-                    reminder_key = f"{idx}_{r['hour']:02d}{r['minute']:02d}"
+                    reminder_key = f"{idx}_{r['hour']:02d}{r['minute']:02d}_{now.date()}"
                     
-                    # Check if already triggered today
                     if reminder_key not in self.triggered_reminders:
                         print(f"Triggering reminder {idx}: {r['text']}")
                         
-                        # Show notification
                         self.show_notification(r)
-                        
-                        # Vibrate
                         self.vibrate()
-                        
-                        # Play alarm
                         self.play_alarm(r)
-                        
-                        # Wake screen and open app
                         self.wake_screen()
                         
-                        # Mark as triggered
                         self.triggered_reminders.add(reminder_key)
             
-            # Reset at midnight
             if now.hour == 0 and now.minute == 0:
                 print("Midnight reset - clearing triggered reminders")
                 self.triggered_reminders.clear()
@@ -231,11 +224,8 @@ class ReminderService:
             traceback.print_exc()
     
     def start_foreground(self):
-        """Start service in foreground with persistent notification"""
+        """Start service in foreground"""
         try:
-            notification_service = self.service.getSystemService(Context.NOTIFICATION_SERVICE)
-            
-            # Create intent
             intent = Intent(self.service.getApplicationContext(), PythonActivity)
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             pending_intent = PendingIntent.getActivity(
@@ -243,7 +233,6 @@ class ReminderService:
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             )
             
-            # Build foreground notification
             builder = NotificationCompat.Builder(self.service, "reminder_channel")
             builder.setContentTitle("My Reminders")
             builder.setContentText("Reminder service is running")
@@ -253,32 +242,23 @@ class ReminderService:
             builder.setOngoing(True)
             
             notification = builder.build()
-            
-            # Start foreground
             self.service.startForeground(1, notification)
             print("Service started in foreground")
             
         except Exception as e:
             print(f"Foreground service error: {e}")
-            import traceback
-            traceback.print_exc()
     
     def run(self):
         """Main service loop"""
         print("Service running...")
-        
-        # Start as foreground service
         self.start_foreground()
         
-        # Main loop - check reminders every 30 seconds
         while True:
             try:
                 self.check_reminders()
                 time.sleep(30)
             except Exception as e:
                 print(f"Service loop error: {e}")
-                import traceback
-                traceback.print_exc()
                 time.sleep(30)
 
 
