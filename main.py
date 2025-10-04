@@ -1297,4 +1297,3 @@ if __name__ == "__main__":
         print(f"App crash: {e}")
         import traceback
         traceback.print_exc()
-.
