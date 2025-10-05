@@ -84,10 +84,10 @@ if platform == 'android':
 
 
 def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
-    """Schedule alarm using AlarmManager - WORKS WHEN APP IS CLOSED"""
+    """Schedule alarm using AlarmManager with BroadcastReceiver - WORKS WHEN APP IS CLOSED"""
     if platform == 'android':
         try:
-            from jnius import autoclass, cast
+            from jnius import autoclass
             
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             Intent = autoclass('android.content.Intent')
@@ -107,15 +107,24 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
                 calendar.set(Calendar.SECOND, 0)
                 calendar.set(Calendar.MILLISECOND, 0)
                 
-                # If time has passed today, schedule for tomorrow
-                if calendar.getTimeInMillis() <= System.currentTimeMillis():
-                    calendar.add(Calendar.DAY_OF_MONTH, 1)
+                # Set to correct day of week
+                current_day = calendar.get(Calendar.DAY_OF_WEEK) - 1  # 0=Sunday
+                target_day = day  # 0=Monday in Python
                 
+                # Convert Python day (0=Mon) to Java day (1=Sun)
+                java_target_day = (target_day + 1) % 7 + 1
+                
+                days_until = (java_target_day - current_day + 7) % 7
+                if days_until == 0 and calendar.getTimeInMillis() <= System.currentTimeMillis():
+                    days_until = 7
+                
+                calendar.add(Calendar.DAY_OF_MONTH, days_until)
                 trigger_time = calendar.getTimeInMillis()
                 
-                # Create broadcast intent
+                # Create broadcast intent for our Java receiver
                 intent = Intent()
                 intent.setAction(f"com.reminder.ALARM_{reminder_id}_{day}")
+                intent.setPackage(activity.getPackageName())
                 intent.putExtra("reminder_id", reminder_id)
                 intent.putExtra("reminder_text", reminder_data['text'])
                 intent.putExtra("reminder_category", reminder_data.get('category', 'Personal'))
@@ -128,19 +137,19 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
                 )
                 
-                # Schedule repeating alarm
-                alarm_manager.setRepeatingRequest(
+                # Use setRepeating for weekly repetition
+                alarm_manager.setRepeating(
                     AlarmManager.RTC_WAKEUP,
                     trigger_time,
-                    AlarmManager.INTERVAL_DAY * 7,  # Repeat weekly
+                    AlarmManager.INTERVAL_DAY * 7,  # Repeat every 7 days
                     pending_intent
                 )
             
-            print(f"AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d}")
+            print(f"✅ AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d} for {len(days)} days")
             return True
             
         except Exception as e:
-            print(f"AlarmManager error: {e}")
+            print(f"❌ AlarmManager error: {e}")
             import traceback
             traceback.print_exc()
     return False
