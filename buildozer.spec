@@ -13,10 +13,10 @@ package.domain = com.reminder
 source.dir = .
 
 # (list) Source files to include (let empty to include all the files)
-source.include_exts = py,png,jpg,kv,atlas,json,mp3,wav,ogg,m4a
+source.include_exts = py,png,jpg,kv,atlas,json,mp3,wav,ogg,m4a,java
 
 # (list) List of inclusions using pattern matching
-source.include_patterns = assets/*,assets/ringtones/*,service/*
+source.include_patterns = assets/*,assets/ringtones/*,service/*,java/*
 
 # (str) Application versioning (method 1)
 version = 3.0
@@ -39,7 +39,7 @@ orientation = portrait
 fullscreen = 0
 
 # (list) Permissions - ALL CRITICAL PERMISSIONS FOR ANDROID 12+
-android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO,FOREGROUND_SERVICE_MEDIA_PLAYBACK,DISABLE_KEYGUARD,TURN_SCREEN_ON,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,SYSTEM_ALERT_WINDOW,USE_FULL_SCREEN_INTENT,RECEIVE,SET_ALARM
+android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO,FOREGROUND_SERVICE_MEDIA_PLAYBACK,DISABLE_KEYGUARD,TURN_SCREEN_ON,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,SYSTEM_ALERT_WINDOW,USE_FULL_SCREEN_INTENT,RECEIVE
 
 # (int) Target Android API, should be as high as possible.
 android.api = 33
@@ -60,14 +60,24 @@ android.accept_sdk_license = True
 #android.entrypoint = org.kivy.android.PythonActivity
 
 # (str) Full name including package path of the Java class that implements Python Service
-# CRITICAL: AlarmReceiver service to handle alarms when app is closed
-android.services = AlarmReceiver:service/alarm_receiver.py:foreground
+android.services = ReminderService:service/main.py:foreground
+
+# CRITICAL: Add Java source files directory
+android.add_src = java
+
+# CRITICAL: Register BroadcastReceiver in AndroidManifest.xml
+android.manifest.intent_filters = 
+
+android.manifest.receiver = com.reminder.myreminders.AlarmBroadcastReceiver
+
+# Add receiver declaration
+android.add_to_manifest = <receiver android:name="com.reminder.myreminders.AlarmBroadcastReceiver" android:enabled="true" android:exported="false"><intent-filter><action android:name="com.reminder.ALARM_*" /></intent-filter></receiver>
 
 # (str) Android app theme, default is ok for Kivy-based app
 android.apptheme = @android:style/Theme.NoTitleBar.Fullscreen
 
 # (list) Gradle dependencies to add
-android.gradle_dependencies = com.google.android.material:material:1.6.1
+android.gradle_dependencies = com.google.android.material:material:1.6.1,androidx.core:core:1.9.0
 
 # (bool) Enable AndroidX support
 android.enable_androidx = True
@@ -95,9 +105,6 @@ p4a.bootstrap = sdl2
 
 # (str) Android logcat filters to use
 android.logcat_filters = *:S python:D
-
-# (bool) Copy library instead of making a libpymodules.so
-android.no_compile_pyo = True
 
 [buildozer]
 
