@@ -19,7 +19,7 @@ source.include_exts = py,png,jpg,kv,atlas,json,mp3,wav,ogg,m4a
 source.include_patterns = assets/*,assets/ringtones/*,service/*
 
 # (str) Application versioning (method 1)
-version = 2.4
+version = 3.0
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
@@ -39,7 +39,7 @@ orientation = portrait
 fullscreen = 0
 
 # (list) Permissions - ALL CRITICAL PERMISSIONS FOR ANDROID 12+
-android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO,FOREGROUND_SERVICE_MEDIA_PLAYBACK,DISABLE_KEYGUARD,TURN_SCREEN_ON,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,SYSTEM_ALERT_WINDOW,USE_FULL_SCREEN_INTENT
+android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO,FOREGROUND_SERVICE_MEDIA_PLAYBACK,DISABLE_KEYGUARD,TURN_SCREEN_ON,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,SYSTEM_ALERT_WINDOW,USE_FULL_SCREEN_INTENT,RECEIVE,SET_ALARM
 
 # (int) Target Android API, should be as high as possible.
 android.api = 33
@@ -60,8 +60,8 @@ android.accept_sdk_license = True
 #android.entrypoint = org.kivy.android.PythonActivity
 
 # (str) Full name including package path of the Java class that implements Python Service
-# This enables the background service - CRITICAL FOR REMINDERS TO WORK WHEN APP IS CLOSED
-android.services = ReminderService:service/main.py:foreground
+# CRITICAL: AlarmReceiver service to handle alarms when app is closed
+android.services = AlarmReceiver:service/alarm_receiver.py:foreground
 
 # (str) Android app theme, default is ok for Kivy-based app
 android.apptheme = @android:style/Theme.NoTitleBar.Fullscreen
@@ -93,6 +93,11 @@ p4a.branch = develop
 # (str) Bootstrap to use for android builds
 p4a.bootstrap = sdl2
 
+# (str) Android logcat filters to use
+android.logcat_filters = *:S python:D
+
+# (bool) Copy library instead of making a libpymodules.so
+android.no_compile_pyo = True
 
 [buildozer]
 
