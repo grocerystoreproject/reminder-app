@@ -84,7 +84,7 @@ if platform == 'android':
 
 
 def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
-    """Schedule alarm using AlarmManager with BroadcastReceiver - WORKS WHEN APP IS CLOSED"""
+    """Schedule alarm using AlarmManager - setExactAndAllowWhileIdle for reliability"""
     if platform == 'android':
         try:
             from jnius import autoclass
@@ -99,7 +99,13 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
             activity = PythonActivity.mActivity
             alarm_manager = activity.getSystemService('alarm')
             
-            # Schedule for each day
+            # Find the next occurrence among all selected days
+            now = Calendar.getInstance()
+            current_time = now.getTimeInMillis()
+            
+            next_alarm = None
+            next_alarm_time = None
+            
             for day in days:
                 calendar = Calendar.getInstance()
                 calendar.set(Calendar.HOUR_OF_DAY, hour)
@@ -107,45 +113,49 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
                 calendar.set(Calendar.SECOND, 0)
                 calendar.set(Calendar.MILLISECOND, 0)
                 
-                # Set to correct day of week
-                current_day = calendar.get(Calendar.DAY_OF_WEEK) - 1  # 0=Sunday
-                target_day = day  # 0=Monday in Python
+                # Python: 0=Mon, 1=Tue, ..., 6=Sun
+                # Java: 1=Sun, 2=Mon, ..., 7=Sat
+                java_day = ((day + 1) % 7) + 1
+                calendar.set(Calendar.DAY_OF_WEEK, java_day)
                 
-                # Convert Python day (0=Mon) to Java day (1=Sun)
-                java_target_day = (target_day + 1) % 7 + 1
+                # If this day/time has passed this week, move to next week
+                if calendar.getTimeInMillis() <= current_time:
+                    calendar.add(Calendar.WEEK_OF_YEAR, 1)
                 
-                days_until = (java_target_day - current_day + 7) % 7
-                if days_until == 0 and calendar.getTimeInMillis() <= System.currentTimeMillis():
-                    days_until = 7
-                
-                calendar.add(Calendar.DAY_OF_MONTH, days_until)
-                trigger_time = calendar.getTimeInMillis()
-                
-                # Create broadcast intent for our Java receiver
-                intent = Intent()
-                intent.setAction(f"com.reminder.ALARM_{reminder_id}_{day}")
-                intent.setPackage(activity.getPackageName())
-                intent.putExtra("reminder_id", reminder_id)
-                intent.putExtra("reminder_text", reminder_data['text'])
-                intent.putExtra("reminder_category", reminder_data.get('category', 'Personal'))
-                intent.putExtra("reminder_note", reminder_data.get('note', ''))
-                
-                pending_intent = PendingIntent.getBroadcast(
-                    activity,
-                    reminder_id * 10 + day,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                )
-                
-                # Use setRepeating for weekly repetition
-                alarm_manager.setRepeating(
-                    AlarmManager.RTC_WAKEUP,
-                    trigger_time,
-                    AlarmManager.INTERVAL_DAY * 7,  # Repeat every 7 days
-                    pending_intent
-                )
+                # Check if this is the soonest alarm
+                if next_alarm_time is None or calendar.getTimeInMillis() < next_alarm_time:
+                    next_alarm_time = calendar.getTimeInMillis()
+                    next_alarm = day
             
-            print(f"✅ AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d} for {len(days)} days")
+            if next_alarm_time is None:
+                return False
+            
+            # Create intent that will restart the service
+            intent = Intent(activity, autoclass('org.kivy.android.PythonService'))
+            intent.setAction(f"ALARM_{reminder_id}")
+            intent.putExtra("reminder_id", reminder_id)
+            intent.putExtra("reminder_text", reminder_data['text'])
+            intent.putExtra("reminder_category", reminder_data.get('category', 'Personal'))
+            intent.putExtra("reminder_note", reminder_data.get('note', ''))
+            intent.putExtra("alarm_hour", hour)
+            intent.putExtra("alarm_minute", minute)
+            intent.putExtra("alarm_days", ','.join(map(str, days)))
+            
+            pending_intent = PendingIntent.getService(
+                activity,
+                reminder_id,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            # Use setExactAndAllowWhileIdle for reliability even in Doze mode
+            alarm_manager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                next_alarm_time,
+                pending_intent
+            )
+            
+            print(f"✅ AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d} (next: {next_alarm_time})")
             return True
             
         except Exception as e:
