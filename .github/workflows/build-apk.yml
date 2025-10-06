@@ -1,256 +1,39 @@
-name: Build My Reminders APK
+name: Build APK
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - 'v*'
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  build-apk:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install System Dependencies
+      
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            openjdk-17-jdk \
-            build-essential \
-            git \
-            zip \
-            unzip \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            zlib1g-dev \
-            libssl-dev \
-            libffi-dev \
-            libltdl-dev \
-            libncurses5-dev \
-            libncursesw5-dev \
-            libtinfo5 \
-            cmake \
-            ccache \
-            libsdl2-dev \
-            libsdl2-image-dev \
-            libsdl2-mixer-dev \
-            libsdl2-ttf-dev
-
-      - name: Setup Java Environment
-        run: |
-          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-          echo "/usr/lib/jvm/java-17-openjdk-amd64/bin" >> $GITHUB_PATH
-
-      - name: Verify Java Installation
-        run: |
-          java -version
-          javac -version
-          echo "JAVA_HOME: $JAVA_HOME"
-
-      - name: Upgrade pip and Install Build Tools
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install --upgrade cython==0.29.36
-          pip install --upgrade buildozer==1.5.0
-          pip install --upgrade virtualenv
-
-      - name: Create Required Directories
-        run: |
-          mkdir -p assets/ringtones
-          mkdir -p service
-          mkdir -p .buildozer
-
-      - name: Cache Buildozer Global
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.buildozer
-          key: ${{ runner.os }}-buildozer-global-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-global-
-
-      - name: Cache Buildozer Local
-        uses: actions/cache@v4
-        with:
-          path: |
-            .buildozer
-          key: ${{ runner.os }}-buildozer-local-${{ hashFiles('buildozer.spec') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-local-${{ hashFiles('buildozer.spec') }}-
-            ${{ runner.os }}-buildozer-local-
-
+          sudo apt-get install -y build-essential git zip unzip openjdk-11-jdk
+          pip install --upgrade buildozer cython
+      
       - name: Setup Android SDK
-        run: |
-          mkdir -p ~/.buildozer/android/platform/android-sdk
-          cd ~/.buildozer/android/platform/android-sdk
-          
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip -q commandlinetools-linux-9477386_latest.zip
-          
-          mkdir -p cmdline-tools-temp
-          mv cmdline-tools cmdline-tools-temp/latest
-          mv cmdline-tools-temp cmdline-tools
-          
-          export ANDROID_SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
-          export ANDROID_HOME="$ANDROID_SDK_ROOT"
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-          
-          mkdir -p licenses
-          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > licenses/android-sdk-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> licenses/android-sdk-license
-          
-          yes | sdkmanager --sdk_root=$ANDROID_SDK_ROOT --licenses || true
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" || true
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platforms;android-33" || true
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "build-tools;33.0.0" || true
-          
-          mkdir -p tools/bin
-          ln -sf ../../cmdline-tools/latest/bin/sdkmanager tools/bin/sdkmanager
-
-      - name: Setup Build Environment
-        run: |
-          echo "USE_CCACHE=1" >> $GITHUB_ENV
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-          echo "GRADLE_OPTS=-Dorg.gradle.jvmargs=-Xmx4096m -Dorg.gradle.daemon=false" >> $GITHUB_ENV
-          echo "ANDROIDSDK=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-          echo "ANDROIDNDK=$HOME/.buildozer/android/platform/android-ndk-r25b" >> $GITHUB_ENV
-          echo "ANDROIDAPI=33" >> $GITHUB_ENV
-          echo "ANDROIDMINAPI=21" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-
-      - name: Clean Previous Build
-        run: |
-          if [ -d ".buildozer/android/platform/build-arm64-v8a/dists/myreminders" ]; then
-            echo "Cleaning existing distribution..."
-            rm -rf .buildozer/android/platform/build-arm64-v8a/dists/myreminders
-          fi
-
-      - name: Build APK with Buildozer
-        id: build
-        continue-on-error: true
-        run: |
-          echo "Starting Buildozer Build"
-          echo "JAVA_HOME: $JAVA_HOME"
-          echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
-          
-          buildozer -v android debug 2>&1 | tee build_log.txt
-          
-          BUILD_EXIT_CODE=${PIPESTATUS[0]}
-          echo "Build exit code: $BUILD_EXIT_CODE"
-          
-          if [ $BUILD_EXIT_CODE -eq 0 ]; then
-            echo "build_status=success" >> $GITHUB_OUTPUT
-          else
-            echo "build_status=failed" >> $GITHUB_OUTPUT
-          fi
-          
-          exit $BUILD_EXIT_CODE
-
-      - name: Upload Build Log
-        if: always()
-        uses: actions/upload-artifact@v4
+        uses: android-actions/setup-android@v2
         with:
-          name: build-log
-          path: build_log.txt
-          retention-days: 30
-
-      - name: Find and Copy APK
-        if: steps.build.outputs.build_status == 'success'
+          api-level: 33
+          ndk-version: '25.2.9519653'
+      
+      - name: Build APK
         run: |
-          mkdir -p bin
-          
-          echo "Searching for APK..."
-          APK_PATH=$(find .buildozer/android/platform/build-arm64-v8a/dists/myreminders -name "*.apk" -type f | head -n 1)
-          
-          if [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ]; then
-            echo "Found APK: $APK_PATH"
-            
-            VERSION=$(grep "^version" buildozer.spec | cut -d'=' -f2 | tr -d ' ')
-            DATE=$(date +%Y%m%d)
-            NEW_NAME="MyReminders-v${VERSION}-${DATE}.apk"
-            
-            cp "$APK_PATH" "bin/$NEW_NAME"
-            echo "Copied to bin/$NEW_NAME"
-            ls -lh bin/
-          else
-            echo "ERROR: No APK found!"
-            exit 1
-          fi
-
-      - name: Upload APK Artifact
-        if: steps.build.outputs.build_status == 'success'
-        uses: actions/upload-artifact@v4
+          buildozer android debug
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
         with:
-          name: MyReminders-APK
+          name: myreminders-debug.apk
           path: bin/*.apk
-          retention-days: 90
-
-      - name: Generate Build Summary
-        if: always()
-        run: |
-          echo "# Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ steps.build.outputs.build_status }}" == "success" ]; then
-            echo "✅ **Build Status:** SUCCESS" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## Generated APK" >> $GITHUB_STEP_SUMMARY
-            ls -lh bin/*.apk 2>/dev/null | awk '{print "- " $9 " (" $5 ")"}' >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **Build Status:** FAILED" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Check the build log artifact for detailed error messages." >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Build Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- Python: 3.11" >> $GITHUB_STEP_SUMMARY
-          echo "- Java: 17" >> $GITHUB_STEP_SUMMARY
-          echo "- Buildozer: 1.5.0" >> $GITHUB_STEP_SUMMARY
-          echo "- Target API: 33" >> $GITHUB_STEP_SUMMARY
-          echo "- Min API: 21" >> $GITHUB_STEP_SUMMARY
-          echo "- Architecture: arm64-v8a" >> $GITHUB_STEP_SUMMARY
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') && steps.build.outputs.build_status == 'success'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: bin/*.apk
-          body: |
-            ## My Reminders APK Release
-            
-            **Version:** ${{ github.ref_name }}
-            **Build Date:** ${{ github.event.head_commit.timestamp }}
-            
-            ### Features
-            - ⏰ Custom reminders with alarm sound
-            - 🔔 Choose system sound or custom ringtones
-            - 📅 Repeat on specific days
-            - 😴 Snooze functionality
-            - 🔕 Works even when app is closed
-            
-            ### Installation
-            1. Download the APK file below
-            2. Enable "Install from Unknown Sources" in Android settings
-            3. Install the APK
-            4. Grant all requested permissions
-            
-            ### Requirements
-            - Android 5.0 (API 21) or higher
-            - ~50MB storage space
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
