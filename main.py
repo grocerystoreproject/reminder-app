@@ -57,7 +57,8 @@ if platform == 'android':
                 
                 if Build.VERSION.SDK_INT >= 31:
                     AlarmManager = autoclass('android.app.AlarmManager')
-                    alarm_manager = activity.getSystemService('alarm')
+                    Context = autoclass('android.content.Context')
+                    alarm_manager = activity.getSystemService(Context.ALARM_SERVICE)
                     
                     if not alarm_manager.canScheduleExactAlarms():
                         print("Requesting exact alarm permission...")
@@ -65,7 +66,8 @@ if platform == 'android':
                         activity.startActivity(intent)
                 
                 PowerManager = autoclass('android.os.PowerManager')
-                power_manager = activity.getSystemService('power')
+                Context = autoclass('android.content.Context')
+                power_manager = activity.getSystemService(Context.POWER_SERVICE)
                 package_name = activity.getPackageName()
                 
                 if not power_manager.isIgnoringBatteryOptimizations(package_name):
@@ -94,10 +96,11 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
             PendingIntent = autoclass('android.app.PendingIntent')
             AlarmManager = autoclass('android.app.AlarmManager')
             Calendar = autoclass('java.util.Calendar')
-            System = autoclass('java.lang.System')
+            Context = autoclass('android.content.Context')
             
             activity = PythonActivity.mActivity
-            alarm_manager = activity.getSystemService('alarm')
+            context = activity.getApplicationContext()
+            alarm_manager = context.getSystemService(Context.ALARM_SERVICE)
             
             # Find the next occurrence among all selected days
             now = Calendar.getInstance()
@@ -130,23 +133,30 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
             if next_alarm_time is None:
                 return False
             
-            # Create intent that will restart the service
-            intent = Intent(activity, autoclass('org.kivy.android.PythonService'))
-            intent.setAction(f"ALARM_{reminder_id}")
-            intent.putExtra("reminder_id", reminder_id)
+            # FIXED: Create intent that will restart the service with proper action
+            service_class = autoclass('org.kivy.android.PythonService')
+            intent = Intent(context, service_class)
+            intent.setAction(f"REMINDER_ALARM_{reminder_id}")
+            intent.putExtra("reminder_id", str(reminder_id))
             intent.putExtra("reminder_text", reminder_data['text'])
             intent.putExtra("reminder_category", reminder_data.get('category', 'Personal'))
             intent.putExtra("reminder_note", reminder_data.get('note', ''))
-            intent.putExtra("alarm_hour", hour)
-            intent.putExtra("alarm_minute", minute)
+            intent.putExtra("alarm_hour", str(hour))
+            intent.putExtra("alarm_minute", str(minute))
             intent.putExtra("alarm_days", ','.join(map(str, days)))
             
             pending_intent = PendingIntent.getService(
-                activity,
+                context,
                 reminder_id,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             )
+            
+            # Check if we can schedule exact alarms
+            if hasattr(alarm_manager, 'canScheduleExactAlarms'):
+                if not alarm_manager.canScheduleExactAlarms():
+                    print("⚠️ Cannot schedule exact alarms - requesting permission")
+                    return False
             
             # Use setExactAndAllowWhileIdle for reliability even in Doze mode
             alarm_manager.setExactAndAllowWhileIdle(
@@ -155,7 +165,9 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
                 pending_intent
             )
             
-            print(f"✅ AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d} (next: {next_alarm_time})")
+            # Calculate when the alarm will trigger
+            next_date = datetime.datetime.fromtimestamp(next_alarm_time / 1000)
+            print(f"✅ AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d} (next trigger: {next_date})")
             return True
             
         except Exception as e:
@@ -175,27 +187,31 @@ def cancel_alarm_with_manager(reminder_id, days):
             Intent = autoclass('android.content.Intent')
             PendingIntent = autoclass('android.app.PendingIntent')
             AlarmManager = autoclass('android.app.AlarmManager')
+            Context = autoclass('android.content.Context')
             
             activity = PythonActivity.mActivity
-            alarm_manager = activity.getSystemService('alarm')
+            context = activity.getApplicationContext()
+            alarm_manager = context.getSystemService(Context.ALARM_SERVICE)
             
-            for day in days:
-                intent = Intent()
-                intent.setAction(f"com.reminder.ALARM_{reminder_id}_{day}")
-                
-                pending_intent = PendingIntent.getBroadcast(
-                    activity,
-                    reminder_id * 10 + day,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                )
-                
-                alarm_manager.cancel(pending_intent)
+            # Cancel the pending intent
+            service_class = autoclass('org.kivy.android.PythonService')
+            intent = Intent(context, service_class)
+            intent.setAction(f"REMINDER_ALARM_{reminder_id}")
             
-            print(f"AlarmManager: Cancelled reminder {reminder_id}")
+            pending_intent = PendingIntent.getService(
+                context,
+                reminder_id,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            alarm_manager.cancel(pending_intent)
+            pending_intent.cancel()
+            
+            print(f"✅ AlarmManager: Cancelled reminder {reminder_id}")
             
         except Exception as e:
-            print(f"AlarmManager cancel error: {e}")
+            print(f"❌ AlarmManager cancel error: {e}")
 
 
 def create_notification_channel():
@@ -209,32 +225,35 @@ def create_notification_channel():
             NotificationChannel = autoclass('android.app.NotificationChannel')
             AudioAttributes = autoclass('android.media.AudioAttributes')
             RingtoneManager = autoclass('android.media.RingtoneManager')
+            Build = autoclass('android.os.Build')
             
             activity = PythonActivity.mActivity
             notification_service = activity.getSystemService(Context.NOTIFICATION_SERVICE)
             
-            channel_id = "reminder_channel"
-            channel_name = "Reminder Notifications"
-            importance = NotificationManager.IMPORTANCE_HIGH
-            
-            channel = NotificationChannel(channel_id, channel_name, importance)
-            channel.setDescription("Notifications for reminders")
-            channel.enableVibration(True)
-            channel.setVibrationPattern([0, 500, 200, 500])
-            channel.setLockscreenVisibility(1)
-            channel.setBypassDnd(True)
-            
-            default_sound_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            audio_attributes = AudioAttributes.Builder() \
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION) \
-                .setUsage(AudioAttributes.USAGE_ALARM) \
-                .build()
-            channel.setSound(default_sound_uri, audio_attributes)
-            
-            notification_service.createNotificationChannel(channel)
-            print("Notification channel created with alarm sound")
+            # Only create channel on Android 8.0+
+            if Build.VERSION.SDK_INT >= 26:
+                channel_id = "reminder_channel"
+                channel_name = "Reminder Notifications"
+                importance = NotificationManager.IMPORTANCE_HIGH
+                
+                channel = NotificationChannel(channel_id, channel_name, importance)
+                channel.setDescription("Notifications for reminders")
+                channel.enableVibration(True)
+                channel.setVibrationPattern([0, 500, 200, 500])
+                channel.setLockscreenVisibility(1)
+                channel.setBypassDnd(True)
+                
+                default_sound_uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                audio_attributes = AudioAttributes.Builder() \
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION) \
+                    .setUsage(AudioAttributes.USAGE_ALARM) \
+                    .build()
+                channel.setSound(default_sound_uri, audio_attributes)
+                
+                notification_service.createNotificationChannel(channel)
+                print("✅ Notification channel created with alarm sound")
         except Exception as e:
-            print(f"Channel creation error: {e}")
+            print(f"❌ Channel creation error: {e}")
             import traceback
             traceback.print_exc()
 
@@ -248,21 +267,23 @@ def start_background_service():
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             Intent = autoclass('android.content.Intent')
             Build = autoclass('android.os.Build')
+            Context = autoclass('android.content.Context')
             
             activity = PythonActivity.mActivity
+            context = activity.getApplicationContext()
             
-            service_intent = Intent(activity, PythonService)
+            service_intent = Intent(context, PythonService)
             service_intent.putExtra("serviceTitle", "My Reminders")
             service_intent.putExtra("serviceDescription", "Monitoring reminders")
             
             if Build.VERSION.SDK_INT >= 26:
-                activity.startForegroundService(service_intent)
+                context.startForegroundService(service_intent)
             else:
-                activity.startService(service_intent)
+                context.startService(service_intent)
             
-            print("Background service started")
+            print("✅ Background service started")
         except Exception as e:
-            print(f"Service start error: {e}")
+            print(f"❌ Service start error: {e}")
             import traceback
             traceback.print_exc()
 
@@ -1511,6 +1532,7 @@ The app will request these permissions automatically."""
                 Uri = autoclass('android.net.Uri')
                 PythonActivity = autoclass('org.kivy.android.PythonActivity')
                 RingtoneManager = autoclass('android.media.RingtoneManager')
+                Context = autoclass('android.content.Context')
                 
                 activity = PythonActivity.mActivity
                 
