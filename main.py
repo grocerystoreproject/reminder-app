@@ -85,8 +85,8 @@ if platform == 'android':
         print(f"Permission error: {e}")
 
 
-def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
-    """Schedule alarm using AlarmManager - setExactAndAllowWhileIdle for reliability"""
+def cancel_alarm_with_manager(reminder_id, days):
+    """Cancel alarm using AlarmManager"""
     if platform == 'android':
         try:
             from jnius import autoclass
@@ -95,55 +95,16 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
             Intent = autoclass('android.content.Intent')
             PendingIntent = autoclass('android.app.PendingIntent')
             AlarmManager = autoclass('android.app.AlarmManager')
-            Calendar = autoclass('java.util.Calendar')
             Context = autoclass('android.content.Context')
             
             activity = PythonActivity.mActivity
             context = activity.getApplicationContext()
             alarm_manager = context.getSystemService(Context.ALARM_SERVICE)
             
-            # Find the next occurrence among all selected days
-            now = Calendar.getInstance()
-            current_time = now.getTimeInMillis()
-            
-            next_alarm = None
-            next_alarm_time = None
-            
-            for day in days:
-                calendar = Calendar.getInstance()
-                calendar.set(Calendar.HOUR_OF_DAY, hour)
-                calendar.set(Calendar.MINUTE, minute)
-                calendar.set(Calendar.SECOND, 0)
-                calendar.set(Calendar.MILLISECOND, 0)
-                
-                # Python: 0=Mon, 1=Tue, ..., 6=Sun
-                # Java: 1=Sun, 2=Mon, ..., 7=Sat
-                java_day = ((day + 1) % 7) + 1
-                calendar.set(Calendar.DAY_OF_WEEK, java_day)
-                
-                # If this day/time has passed this week, move to next week
-                if calendar.getTimeInMillis() <= current_time:
-                    calendar.add(Calendar.WEEK_OF_YEAR, 1)
-                
-                # Check if this is the soonest alarm
-                if next_alarm_time is None or calendar.getTimeInMillis() < next_alarm_time:
-                    next_alarm_time = calendar.getTimeInMillis()
-                    next_alarm = day
-            
-            if next_alarm_time is None:
-                return False
-            
-            # FIXED: Create intent that will restart the service with proper action
+            # Cancel the pending intent - FIXED to match service action
             service_class = autoclass('org.kivy.android.PythonService')
             intent = Intent(context, service_class)
-            intent.setAction(f"REMINDER_ALARM_{reminder_id}")
-            intent.putExtra("reminder_id", str(reminder_id))
-            intent.putExtra("reminder_text", reminder_data['text'])
-            intent.putExtra("reminder_category", reminder_data.get('category', 'Personal'))
-            intent.putExtra("reminder_note", reminder_data.get('note', ''))
-            intent.putExtra("alarm_hour", str(hour))
-            intent.putExtra("alarm_minute", str(minute))
-            intent.putExtra("alarm_days", ','.join(map(str, days)))
+            intent.setAction(f"ALARM_{reminder_id}")
             
             pending_intent = PendingIntent.getService(
                 context,
@@ -152,29 +113,13 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             )
             
-            # Check if we can schedule exact alarms
-            if hasattr(alarm_manager, 'canScheduleExactAlarms'):
-                if not alarm_manager.canScheduleExactAlarms():
-                    print("⚠️ Cannot schedule exact alarms - requesting permission")
-                    return False
+            alarm_manager.cancel(pending_intent)
+            pending_intent.cancel()
             
-            # Use setExactAndAllowWhileIdle for reliability even in Doze mode
-            alarm_manager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                next_alarm_time,
-                pending_intent
-            )
-            
-            # Calculate when the alarm will trigger
-            next_date = datetime.datetime.fromtimestamp(next_alarm_time / 1000)
-            print(f"✅ AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d} (next trigger: {next_date})")
-            return True
+            print(f"✅ AlarmManager: Cancelled reminder {reminder_id}")
             
         except Exception as e:
-            print(f"❌ AlarmManager error: {e}")
-            import traceback
-            traceback.print_exc()
-    return False
+            print(f"❌ AlarmManager cancel error: {e}")
 
 
 def cancel_alarm_with_manager(reminder_id, days):
@@ -1886,3 +1831,4 @@ if __name__ == "__main__":
         print(f"App crash: {e}")
         import traceback
         traceback.print_exc()
+
