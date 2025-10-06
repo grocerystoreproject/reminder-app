@@ -7,38 +7,40 @@ source.include_exts = py,png,jpg,kv,atlas,json
 source.include_patterns = service/*
 version = 2.5
 
-# Minimal requirements for faster build
-requirements = python3,kivy==2.3.0,android,jnius,pyjnius
+# Minimal requirements
+requirements = python3,kivy==2.3.0,android,pyjnius
 
 orientation = portrait
 fullscreen = 0
 
-android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,FOREGROUND_SERVICE_MEDIA_PLAYBACK,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO,DISABLE_KEYGUARD,TURN_SCREEN_ON,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,SYSTEM_ALERT_WINDOW,USE_FULL_SCREEN_INTENT,android.permission.FOREGROUND_SERVICE_SPECIAL_USE,ACCESS_NOTIFICATION_POLICY
+# Permissions (one per line for clarity)
+android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
 
+# API levels
 android.api = 33
 android.minapi = 26
 android.ndk = 25b
-android.private_storage = True
 android.accept_sdk_license = True
 
+# Service configuration
 android.services = ReminderService:service/main.py
 
+# Theme
 android.apptheme = @android:style/Theme.Material.Light.NoActionBar
 
-android.gradle_dependencies = com.google.android.material:material:1.9.0,androidx.core:core:1.12.0
+# Gradle dependencies
+android.gradle_dependencies = com.google.android.material:material:1.9.0
 
+# AndroidX
 android.enable_androidx = True
 
-android.add_compile_options = sourceCompatibility = JavaVersion.VERSION_17, targetCompatibility = JavaVersion.VERSION_17
+# Java compatibility
+android.add_compile_options = sourceCompatibility JavaVersion.VERSION_11, targetCompatibility JavaVersion.VERSION_11
 
-android.copy_libs = 1
-
-# Single architecture for faster testing
+# Architecture
 android.archs = arm64-v8a
 
-android.allow_backup = True
-android.skip_update = False
-
+# P4A settings
 p4a.branch = master
 p4a.bootstrap = sdl2
 
