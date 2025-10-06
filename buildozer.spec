@@ -1,49 +1,72 @@
-[app]
-title = My Reminders
-package.name = myreminders
-package.domain = com.reminder
-source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,json
-source.include_patterns = service/*
-version = 2.5
+name: Build My Reminders APK
 
-# Minimal requirements
-requirements = python3,kivy==2.3.0,android,pyjnius
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
-orientation = portrait
-fullscreen = 0
-
-# Permissions (one per line for clarity)
-android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
-
-# API levels
-android.api = 33
-android.minapi = 26
-android.ndk = 25b
-android.accept_sdk_license = True
-
-# Service configuration
-android.services = ReminderService:service/main.py
-
-# Theme
-android.apptheme = @android:style/Theme.Material.Light.NoActionBar
-
-# Gradle dependencies
-android.gradle_dependencies = com.google.android.material:material:1.9.0
-
-# AndroidX
-android.enable_androidx = True
-
-# Java compatibility
-android.add_compile_options = sourceCompatibility JavaVersion.VERSION_11, targetCompatibility JavaVersion.VERSION_11
-
-# Architecture
-android.archs = arm64-v8a
-
-# P4A settings
-p4a.branch = master
-p4a.bootstrap = sdl2
-
-[buildozer]
-log_level = 2
-warn_on_root = 1
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            zip \
+            unzip \
+            libssl-dev \
+            libffi-dev \
+            python3-dev \
+            autoconf \
+            automake \
+            libtool \
+            libtool-bin \
+            pkg-config \
+            zlib1g-dev \
+            libncurses5-dev \
+            cmake \
+            gettext
+      
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.36
+      
+      - name: Cache Buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            .buildozer
+            ~/.buildozer
+          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-
+      
+      - name: Build APK with Buildozer
+        run: |
+          buildozer -v android debug
+      
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: myreminders-debug-apk
+          path: bin/*.apk
+          retention-days: 30
