@@ -16,10 +16,10 @@ fullscreen = 0
 # Permissions (one per line for clarity)
 android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,FOREGROUND_SERVICE_MEDIA_PLAYBACK,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO
 
-# API levels
+# API levels - FIXED NDK version
 android.api = 33
 android.minapi = 26
-android.ndk = 27.3.13750724
+android.ndk = 25b
 android.accept_sdk_license = True
 
 # Service configuration
