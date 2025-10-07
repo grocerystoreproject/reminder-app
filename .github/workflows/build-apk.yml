@@ -7,22 +7,22 @@ on:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
       
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
       
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
+      - name: Set up Java 11
+        uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11'
       
       - name: Install system dependencies
         run: |
@@ -38,49 +38,33 @@ jobs:
             autoconf \
             automake \
             libtool \
-            libtool-bin \
             pkg-config \
             zlib1g-dev \
             libncurses5-dev \
-            cmake \
-            ninja-build \
-            ccache \
-            openjdk-17-jdk
+            cmake
       
       - name: Install Python dependencies
         run: |
-          pip install --upgrade pip
-          pip install --upgrade setuptools wheel
-          pip install buildozer==1.5.0
-          pip install cython==0.29.36
-          pip install --upgrade git+https://github.com/kivy/python-for-android.git@develop
+          pip install --upgrade pip setuptools wheel
+          pip install buildozer==1.4.0
+          pip install cython==0.29.33
       
-      - name: Cache Buildozer directories
-        uses: actions/cache@v4
+      - name: Cache Buildozer
+        uses: actions/cache@v3
         with:
           path: |
             .buildozer
-          key: buildozer-clean-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-u20-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            buildozer-clean-
+            buildozer-u20-
       
-      - name: Clear problematic cache
+      - name: Build APK
         run: |
-          rm -rf .buildozer/android/platform/build-arm64-v8a/build/other_builds/libffi* || true
-          rm -rf .buildozer/android/platform/build-arm64-v8a/packages/libffi* || true
-          rm -rf .buildozer/android/platform/build-arm64-v8a/build/other_builds/hostpython3* || true
+          buildozer -v android debug
       
-      - name: Build APK with Buildozer
-        env:
-          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
-          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-        run: |
-          yes | buildozer android debug || buildozer android debug
-      
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
         with:
           name: MyReminders-v2.5
           path: bin/*.apk
           retention-days: 30
-          if-no-files-found: error
