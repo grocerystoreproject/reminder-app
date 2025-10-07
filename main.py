@@ -85,8 +85,8 @@ if platform == 'android':
         print(f"Permission error: {e}")
 
 
-def cancel_alarm_with_manager(reminder_id, days):
-    """Cancel alarm using AlarmManager"""
+def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
+    """Schedule alarm using AlarmManager"""
     if platform == 'android':
         try:
             from jnius import autoclass
@@ -96,30 +96,69 @@ def cancel_alarm_with_manager(reminder_id, days):
             PendingIntent = autoclass('android.app.PendingIntent')
             AlarmManager = autoclass('android.app.AlarmManager')
             Context = autoclass('android.content.Context')
+            Calendar = autoclass('java.util.Calendar')
             
             activity = PythonActivity.mActivity
             context = activity.getApplicationContext()
             alarm_manager = context.getSystemService(Context.ALARM_SERVICE)
             
-            # Cancel the pending intent - FIXED to match service action
-            service_class = autoclass('org.kivy.android.PythonService')
-            intent = Intent(context, service_class)
-            intent.setAction(f"ALARM_{reminder_id}")
+            # Find next occurrence
+            now = Calendar.getInstance()
+            current_time = now.getTimeInMillis()
             
-            pending_intent = PendingIntent.getService(
-                context,
-                reminder_id,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-            )
+            next_alarm_time = None
             
-            alarm_manager.cancel(pending_intent)
-            pending_intent.cancel()
+            for day in days:
+                calendar = Calendar.getInstance()
+                calendar.set(Calendar.HOUR_OF_DAY, hour)
+                calendar.set(Calendar.MINUTE, minute)
+                calendar.set(Calendar.SECOND, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                
+                # Convert Python day (0=Monday) to Java day (1=Sunday, 2=Monday, etc.)
+                java_day = ((day + 1) % 7) + 1
+                calendar.set(Calendar.DAY_OF_WEEK, java_day)
+                
+                # If the time has passed today, schedule for next week
+                if calendar.getTimeInMillis() <= current_time:
+                    calendar.add(Calendar.WEEK_OF_YEAR, 1)
+                
+                if next_alarm_time is None or calendar.getTimeInMillis() < next_alarm_time:
+                    next_alarm_time = calendar.getTimeInMillis()
             
-            print(f"✅ AlarmManager: Cancelled reminder {reminder_id}")
-            
+            if next_alarm_time:
+                # Create intent for service
+                service_class = autoclass('org.kivy.android.PythonService')
+                intent = Intent(context, service_class)
+                intent.setAction(f"ALARM_{reminder_id}")
+                intent.putExtra("reminder_id", reminder_id)
+                intent.putExtra("reminder_text", reminder_data.get('text', ''))
+                intent.putExtra("reminder_category", reminder_data.get('category', 'Personal'))
+                intent.putExtra("reminder_note", reminder_data.get('note', ''))
+                intent.putExtra("alarm_hour", hour)
+                intent.putExtra("alarm_minute", minute)
+                intent.putExtra("alarm_days", ','.join(map(str, days)))
+                
+                pending_intent = PendingIntent.getService(
+                    context,
+                    reminder_id,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                )
+                
+                # Schedule exact alarm
+                alarm_manager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    next_alarm_time,
+                    pending_intent
+                )
+                
+                print(f"✅ AlarmManager: Scheduled reminder {reminder_id} at {hour}:{minute:02d} for days {days}")
+                
         except Exception as e:
-            print(f"❌ AlarmManager cancel error: {e}")
+            print(f"❌ AlarmManager schedule error: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 def cancel_alarm_with_manager(reminder_id, days):
@@ -141,7 +180,7 @@ def cancel_alarm_with_manager(reminder_id, days):
             # Cancel the pending intent
             service_class = autoclass('org.kivy.android.PythonService')
             intent = Intent(context, service_class)
-            intent.setAction(f"REMINDER_ALARM_{reminder_id}")
+            intent.setAction(f"ALARM_{reminder_id}")
             
             pending_intent = PendingIntent.getService(
                 context,
@@ -1831,4 +1870,3 @@ if __name__ == "__main__":
         print(f"App crash: {e}")
         import traceback
         traceback.print_exc()
-
