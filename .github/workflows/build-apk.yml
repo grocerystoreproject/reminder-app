@@ -44,7 +44,8 @@ jobs:
             libncurses5-dev \
             cmake \
             ninja-build \
-            ccache
+            ccache \
+            openjdk-17-jdk
       
       - name: Install Python dependencies
         run: |
@@ -54,29 +55,27 @@ jobs:
           pip install cython==0.29.36
           pip install --upgrade git+https://github.com/kivy/python-for-android.git@develop
       
-      - name: Set NDK environment variable
-        run: |
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
-          echo "ANDROIDNDK=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
-      
-      - name: Cache Buildozer
+      - name: Cache Buildozer directories
         uses: actions/cache@v4
         with:
           path: |
             .buildozer
-            ~/.buildozer
-          key: buildozer-v3-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-clean-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            buildozer-v3-
+            buildozer-clean-
       
-      - name: Clean old builds
+      - name: Clear problematic cache
         run: |
-          rm -rf .buildozer/android/platform/build-arm64-v8a/build/other_builds/libffi
-          rm -rf .buildozer/android/platform/build-arm64-v8a/packages/libffi
+          rm -rf .buildozer/android/platform/build-arm64-v8a/build/other_builds/libffi* || true
+          rm -rf .buildozer/android/platform/build-arm64-v8a/packages/libffi* || true
+          rm -rf .buildozer/android/platform/build-arm64-v8a/build/other_builds/hostpython3* || true
       
       - name: Build APK with Buildozer
+        env:
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
-          buildozer -v android debug
+          yes | buildozer android debug || buildozer android debug
       
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
