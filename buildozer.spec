@@ -16,9 +16,10 @@ fullscreen = 0
 # Permissions (one per line for clarity)
 android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,FOREGROUND_SERVICE_MEDIA_PLAYBACK,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO
 
-# API levels - FIXED: Remove NDK specification to use system default
+# API levels - Use compatible NDK
 android.api = 33
 android.minapi = 26
+android.ndk = 27c
 android.accept_sdk_license = True
 
 # Service configuration
@@ -39,8 +40,8 @@ android.add_compile_options = sourceCompatibility JavaVersion.VERSION_11, target
 # Architecture
 android.archs = arm64-v8a
 
-# P4A settings
-p4a.branch = master
+# P4A settings - Use develop branch for better compatibility
+p4a.branch = develop
 p4a.bootstrap = sdl2
 
 [buildozer]
