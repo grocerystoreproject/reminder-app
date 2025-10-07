@@ -1,72 +1,39 @@
-name: Build My Reminders APK
+[app]
+title = My Reminders
+package.name = myreminders
+package.domain = com.reminder
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas,json
+source.include_patterns = service/*
+version = 2.5
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+requirements = python3,kivy==2.3.0,android,pyjnius
 
-jobs:
-  build-apk:
-    runs-on: ubuntu-20.04
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Python 3.9
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-      
-      - name: Set up Java 11
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '11'
-      
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            git \
-            zip \
-            unzip \
-            libssl-dev \
-            libffi-dev \
-            python3-dev \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            zlib1g-dev \
-            libncurses5-dev \
-            cmake
-      
-      - name: Install Python dependencies
-        run: |
-          pip install --upgrade pip
-          pip install --upgrade setuptools wheel
-          pip install buildozer==1.4.0
-          pip install cython==0.29.33
-      
-      - name: Cache Buildozer directories
-        uses: actions/cache@v4
-        with:
-          path: |
-            .buildozer
-          key: buildozer-ubuntu20-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-ubuntu20-
-      
-      - name: Build APK with Buildozer
-        run: |
-          yes | buildozer -v android debug
-      
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MyReminders-v2.5
-          path: bin/*.apk
-          retention-days: 30
-          if-no-files-found: error
+orientation = portrait
+fullscreen = 0
+
+android.permissions = INTERNET,VIBRATE,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,SCHEDULE_EXACT_ALARM,POST_NOTIFICATIONS,USE_EXACT_ALARM,FOREGROUND_SERVICE,FOREGROUND_SERVICE_MEDIA_PLAYBACK,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,READ_MEDIA_AUDIO
+
+android.api = 33
+android.minapi = 21
+android.ndk = 25b
+android.accept_sdk_license = True
+
+android.services = ReminderService:service/main.py
+
+android.apptheme = @android:style/Theme.Material.Light.NoActionBar
+
+android.gradle_dependencies = com.google.android.material:material:1.9.0
+
+android.enable_androidx = True
+
+android.add_compile_options = sourceCompatibility JavaVersion.VERSION_11, targetCompatibility JavaVersion.VERSION_11
+
+android.archs = arm64-v8a
+
+p4a.branch = master
+p4a.bootstrap = sdl2
+
+[buildozer]
+log_level = 2
+warn_on_root = 1
