@@ -7,61 +7,43 @@ on:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-20.04
-    
+    runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      
-      - name: Set up Python 3.9
+
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      
-      - name: Set up Java 11
+
+      - name: Set up Java
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '11'
-      
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            git \
-            zip \
-            unzip \
-            libssl-dev \
-            libffi-dev \
-            python3-dev \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            zlib1g-dev \
-            libncurses5-dev \
-            cmake
-      
+          sudo apt-get install -y build-essential git zip unzip libssl-dev libffi-dev python3-dev autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev cmake
+
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip setuptools wheel
-          pip install buildozer==1.4.0
-          pip install cython==0.29.33
-      
+          pip install buildozer==1.4.0 cython==0.29.33
+
       - name: Cache Buildozer
         uses: actions/cache@v3
         with:
-          path: |
-            .buildozer
-          key: buildozer-u20-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-u20-
-      
+          path: .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-${{ runner.os }}-
+
       - name: Build APK
-        run: |
-          buildozer -v android debug
-      
+        run: buildozer -v android debug
+
       - name: Upload APK
         uses: actions/upload-artifact@v3
         with:
