@@ -27,8 +27,8 @@ public class AlarmBroadcastReceiver extends BroadcastReceiver {
         // It works even if the app is force-closed or phone was off
         
         String action = intent.getAction();
-        if (action != null && action.startsWith("com.reminder.ALARM_")) {
-            
+if (action != null && action.equals("com.reminder.ALARM_TRIGGER")) {
+    
             // Get reminder data from intent
             int reminderId = intent.getIntExtra("reminder_id", -1);
             String reminderText = intent.getStringExtra("reminder_text");
