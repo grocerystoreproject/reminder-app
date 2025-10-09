@@ -128,9 +128,10 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
             
             if next_alarm_time:
                 # Create intent for service
-                service_class = autoclass('org.kivy.android.PythonService')
-                intent = Intent(context, service_class)
-                intent.setAction(f"ALARM_{reminder_id}")
+                # Create intent for BroadcastReceiver
+                intent = Intent()
+                intent.setAction("com.reminder.ALARM_TRIGGER")
+                intent.setPackage(context.getPackageName())
                 intent.putExtra("reminder_id", reminder_id)
                 intent.putExtra("reminder_text", reminder_data.get('text', ''))
                 intent.putExtra("reminder_category", reminder_data.get('category', 'Personal'))
@@ -139,7 +140,7 @@ def schedule_alarm_with_manager(reminder_id, hour, minute, days, reminder_data):
                 intent.putExtra("alarm_minute", minute)
                 intent.putExtra("alarm_days", ','.join(map(str, days)))
                 
-                pending_intent = PendingIntent.getService(
+                pending_intent = PendingIntent.getBroadcast(
                     context,
                     reminder_id,
                     intent,
@@ -178,11 +179,11 @@ def cancel_alarm_with_manager(reminder_id, days):
             alarm_manager = context.getSystemService(Context.ALARM_SERVICE)
             
             # Cancel the pending intent
-            service_class = autoclass('org.kivy.android.PythonService')
-            intent = Intent(context, service_class)
-            intent.setAction(f"ALARM_{reminder_id}")
-            
-            pending_intent = PendingIntent.getService(
+            intent = Intent()
+            intent.setAction("com.reminder.ALARM_TRIGGER")
+            intent.setPackage(context.getPackageName())
+
+            pending_intent = PendingIntent.getBroadcast(
                 context,
                 reminder_id,
                 intent,
@@ -1870,3 +1871,4 @@ if __name__ == "__main__":
         print(f"App crash: {e}")
         import traceback
         traceback.print_exc()
+
